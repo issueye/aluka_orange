@@ -1,0 +1,27 @@
+{
+  "name": "@aluka/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ui": "vite build",
+    "start": "node ./scripts/run-aluka.mjs",
+    "dev": "npm run build:ui && npm start",
+    "build": "npm run build:ui",
+    "build:gui": "npm run build:ui && node ./scripts/build-gui.mjs"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.9.2",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "lucide-react": "^1.32.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  }
+}
