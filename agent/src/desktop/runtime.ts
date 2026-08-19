@@ -4,6 +4,7 @@
  */
 
 import path from "node:path";
+import type { ThinkingLevel } from "../ai/types.ts";
 import { runAgentLoop } from "../agent/loop.ts";
 import type { AgentEvent, AgentMessage } from "../agent/types.ts";
 import { textFrom } from "../agent/types.ts";
@@ -50,6 +51,15 @@ import {
   type AddProviderModelsInput,
   type RemoteModelView,
 } from "./models-json.ts";
+import type { BuiltinProviderView } from "../providers/builtin.ts";
+import { probeProviderConnection, type ProviderProbeInput, type ProviderProbeResult } from "../providers/probe.ts";
+import {
+  findProviderEntry,
+  listProviderViews,
+  refreshProviderModels,
+} from "../providers/registry.ts";
+import type { Model } from "../ai/types.ts";
+import type { StreamFn } from "../ai/stream.ts";
 import {
   installNpmPackageToAgent,
   type InstallNpmPackageOutcome,
@@ -193,6 +203,12 @@ export interface DesktopRuntime {
   getModelsJsonPreview(): ModelsJsonPreview;
   /** 可编辑的 Aluka agentDir/models.json 配置视图 */
   getModelsJsonConfig(): ModelsJsonConfigView;
+  /** 内置厂商目录 + 扩展动态注册的供应商（含精编模型，不含密钥） */
+  listBuiltinProviders(): BuiltinProviderView[];
+  /** 调用扩展声明的 refreshModels 动态发现模型 */
+  refreshProviderModels(provider: string): Promise<Model[]>;
+  /** 探测供应商连通性（GET models，不消耗 token） */
+  testProviderConnection(input: ProviderProbeInput): Promise<ProviderProbeResult>;
   upsertCustomProvider(input: UpsertCustomProviderInput): ModelsJsonConfigView;
   addProviderModels(input: AddProviderModelsInput): ModelsJsonConfigView;
   fetchRemoteModels(opts: {
@@ -217,6 +233,10 @@ export interface DesktopRuntime {
   shareSession(sessionId?: string): Promise<SessionShareOutcome>;
   /** 当前会话 token 用量汇总（API key 路径；无 OAuth 配额） */
   getSessionUsage(sessionId?: string): SessionUsageView;
+  /** 写入 session_info，侧栏标题优先用这个名字 */
+  setSessionName(name: string): { id: string; name?: string };
+  /** 把当前（或指定 leaf）分支抽成新会话文件 */
+  forkSession(leafId?: string): OpenedSession;
 }
 
 function projectEvent(sessionId: string, event: AgentEvent): DesktopRuntimeEvent | undefined {
@@ -353,24 +373,7 @@ function timelineFromHistory(messages: AgentMessage[]): TimelineItem[] {
 }
 
 function historyFromSession(session: SessionManager): AgentMessage[] {
-  const out: AgentMessage[] = [];
-  for (const entry of session.getEntries()) {
-    if (entry.type === "user" && typeof entry.text === "string") {
-      out.push({
-        role: "user",
-        content: [{ type: "text", text: entry.text }],
-        timestamp: entry.timestamp,
-      });
-      continue;
-    }
-    if (entry.type === "turn" && Array.isArray(entry.messages)) {
-      for (const message of entry.messages as AgentMessage[]) {
-        if (message.role === "user") continue;
-        out.push(message);
-      }
-    }
-  }
-  return out;
+  return [...session.buildSessionContext().messages];
 }
 
 function skillItems(skills: Skill[]): SkillListItem[] {
@@ -393,6 +396,11 @@ function resolveExtraPaths(cwd: string, settings: DesktopSettings, opts: CreateD
   const fromOpts = opts.extraExtensionPaths ?? [];
   const fromSettings = settings.extraExtensions ?? [];
   return [...fromOpts, ...fromSettings].map((p) => (path.isAbsolute(p) ? p : path.resolve(cwd, p)));
+}
+
+function coerceThinkingLevel(raw: unknown): ThinkingLevel {
+  if (raw === "minimal" || raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") return raw;
+  return "off";
 }
 
 export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {}): Promise<DesktopRuntime> {
@@ -434,7 +442,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   }));
   const sessionDir = () => getSessionsDir(cwd, agentDir);
 
-  let session = SessionManager.create(sessionDir());
+  let session = SessionManager.create(sessionDir(), undefined, cwd);
   let history: AgentMessage[] = [];
   let busy = false;
   let controller: AbortController | undefined;
@@ -449,6 +457,14 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     desktopUi,
   );
   runner.setModel(model);
+  runner.setThinkingLevel(coerceThinkingLevel(settings.thinkingLevel));
+
+  function settingsForUi() {
+    return {
+      ...settingsView(settings, agentDir),
+      thinkingLevel: runner.getThinkingLevel(),
+    };
+  }
 
   function rebuildTools() {
     runner.setSession(session);
@@ -492,7 +508,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
 
   if (settings.lastSessionId) {
     try {
-      session = SessionManager.open(sessionDir(), settings.lastSessionId);
+      session = SessionManager.open(sessionDir(), settings.lastSessionId, cwd);
       history = historyFromSession(session);
       tools = rebuildTools();
     } catch {
@@ -561,6 +577,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   function bindSession(next: SessionManager) {
     session = next;
     history = historyFromSession(session);
+    runner.setThinkingLevel(coerceThinkingLevel(session.buildSessionContext().thinkingLevel));
     persistSessionPointer();
     tools = rebuildTools();
     return {
@@ -574,10 +591,10 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   function openLatestOrNew(): OpenedSession {
     const listed = SessionManager.list(sessionDir());
     if (listed[0]) {
-      return bindSession(SessionManager.open(sessionDir(), listed[0].id));
+      return bindSession(SessionManager.open(sessionDir(), listed[0].id, cwd));
     }
     history = [];
-    session = SessionManager.create(sessionDir());
+    session = SessionManager.create(sessionDir(), undefined, cwd);
     persistSessionPointer();
     tools = rebuildTools();
     return { id: session.id, file: session.file, cwd, timeline: [] };
@@ -587,7 +604,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     applyWorkspace(dir);
     if (mode === "new") {
       history = [];
-      session = SessionManager.create(sessionDir());
+      session = SessionManager.create(sessionDir(), undefined, cwd);
       persistSessionPointer();
       tools = rebuildTools();
       return { id: session.id, file: session.file, cwd, timeline: [] };
@@ -625,6 +642,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       model: found.id,
     });
     replaceModel(resolved.model);
+    session.appendModelChange(found.provider, found.id);
     const patch: DesktopSettings = {
       model: found.id,
       provider: found.provider,
@@ -633,10 +651,11 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     if (found.apiKey) patch.apiKey = found.apiKey;
     settings = saveSettings({ ...settings, ...patch, cwd }, agentDir);
     tools = rebuildTools();
-    return settingsView(settings, agentDir);
+    return settingsForUi();
   }
 
   async function reloadExtensionsForCwd(nextCwd: string) {
+    const thinkingLevel = runner.getThinkingLevel();
     cwd = nextCwd;
     loaded = await loadExtensions({
       cwd,
@@ -651,6 +670,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       desktopUi,
     );
     runner.setModel(model);
+    runner.setThinkingLevel(thinkingLevel);
     tools = rebuildTools();
     await runner.emitEvent({ type: "session_start", reason: "startup" });
   }
@@ -663,7 +683,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       return agentDir;
     },
     getSettings() {
-      return settingsView(settings, agentDir);
+      return settingsForUi();
     },
     patchSettings(patch) {
       const cwdChanged = Boolean(patch.cwd && !samePath(patch.cwd, cwd));
@@ -697,6 +717,13 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         replaceModel(resolved.model);
       }
       runner.setModel(model);
+      if (patch.thinkingLevel !== undefined) {
+        const nextLevel = coerceThinkingLevel(patch.thinkingLevel);
+        if (nextLevel !== runner.getThinkingLevel()) {
+          runner.setThinkingLevel(nextLevel);
+          session.appendThinkingLevelChange(nextLevel);
+        }
+      }
       if (cwdChanged) {
         void reloadExtensionsForCwd(cwd);
       } else if (patch.extraExtensions !== undefined) {
@@ -704,7 +731,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       } else {
         tools = rebuildTools();
       }
-      return settingsView(settings, agentDir);
+      return settingsForUi();
     },
     listSessions() {
       return SessionManager.list(sessionDir());
@@ -736,14 +763,14 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     createSession(opts) {
       if (opts?.cwd) applyWorkspace(opts.cwd);
       history = [];
-      session = SessionManager.create(sessionDir());
+      session = SessionManager.create(sessionDir(), undefined, cwd);
       persistSessionPointer();
       tools = rebuildTools();
       return { id: session.id, file: session.file, cwd };
     },
     openSession(id, workspacePath) {
       if (workspacePath) applyWorkspace(workspacePath);
-      return bindSession(SessionManager.open(sessionDir(), id));
+      return bindSession(SessionManager.open(sessionDir(), id, cwd));
     },
     deleteSession(id, workspacePath) {
       const targetCwd = workspacePath?.trim() ? ensureWorkspaceDir(workspacePath) : cwd;
@@ -809,6 +836,16 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     getModelsJsonPreview() {
       return previewModelsJson({ agentDir });
     },
+    listBuiltinProviders(): BuiltinProviderView[] {
+      // 统一注册表：内置目录 + 扩展动态注册（扩展覆盖同 id 的内置条目）
+      return listProviderViews();
+    },
+    async refreshProviderModels(provider: string): Promise<Model[]> {
+      return refreshProviderModels(provider);
+    },
+    async testProviderConnection(input: ProviderProbeInput): Promise<ProviderProbeResult> {
+      return probeProviderConnection(input);
+    },
     getModelsJsonConfig() {
       return readModelsJsonConfig(agentDir);
     },
@@ -872,7 +909,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       const id = sessionId?.trim();
       if (id && id !== session.id) {
         try {
-          const other = SessionManager.open(sessionDir(), id);
+          const other = SessionManager.open(sessionDir(), id, cwd);
           const msgs = historyFromSession(other);
           return buildSessionUsageView({
             sessionId: other.id,
@@ -892,6 +929,25 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         messages: history,
         cost: model.cost,
       });
+    },
+    setSessionName(name) {
+      session.appendSessionInfo(name);
+      persistSessionPointer();
+      return { id: session.id, name: session.getSessionName() };
+    },
+    forkSession(leafId) {
+      const target = leafId?.trim() || session.getLeafId();
+      if (!target) throw new Error("nothing to fork");
+      session.createBranchedSession(target);
+      persistSessionPointer();
+      history = historyFromSession(session);
+      tools = rebuildTools();
+      return {
+        id: session.id,
+        file: session.file,
+        cwd,
+        timeline: timelineFromHistory(history),
+      };
     },
     async prompt(text) {
       const trimmed = text.trim();
@@ -947,6 +1003,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
           {
             model,
             apiKey,
+            thinkingLevel: runner.getThinkingLevel(),
             transformContext: (messages) => runner.emitContext(messages),
             beforeProviderRequest: async (payload) => {
               const replaced = await runner.emitEvent({ type: "before_provider_request", payload });
@@ -968,6 +1025,8 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
             if (projected) await emitDesktop(projected);
           },
           controller.signal,
+          // 注册表供应商的自定义流式实现优先于默认协议路由
+          findProviderEntry(model.provider)?.streamSimple as StreamFn | undefined,
         );
 
         history.push(...produced.filter((message) => message !== user));

@@ -9,6 +9,7 @@ import path from "node:path";
 import { getAgentDir, getPiAgentDir } from "./config.ts";
 import { coerceApi, type Api } from "./ai/types.ts";
 import { providerFetch } from "./ai/provider-fetch.ts";
+import { findProviderEntry, findProviderModel, resolveProviderApiKey } from "./providers/registry.ts";
 
 const MODELS_FILE = "models.json";
 const EMPTY_TEMPLATE = `{\n  "providers": {}\n}\n`;
@@ -506,25 +507,48 @@ export function lookupProviderModel(
   maxTokens?: number;
   reasoning?: boolean;
   apiKey?: string;
+  /** 命中自内置厂商目录（而非 models.json） */
+  builtin?: true;
+  /** 命中自扩展动态注册的供应商 */
+  extension?: true;
 } | undefined {
   const config = readModelsJsonConfig(agentDir);
   const p = config.providers.find((row) => row.provider === provider);
-  if (!p) return undefined;
-  const m = p.models.find((row) => row.id === modelId);
-  if (!m) return undefined;
-  const api = coerceApi(p.api);
-  return {
-    provider: p.provider,
-    id: m.id,
-    name: m.name,
-    api,
-    baseUrl: p.baseUrl,
-    proxy: p.proxy,
-    contextWindow: m.contextWindow,
-    maxTokens: m.maxTokens,
-    reasoning: m.reasoning,
-    apiKey: readProviderApiKey(agentDir, provider),
-  };
+  const m = p?.models.find((row) => row.id === modelId);
+  if (p && m) {
+    const api = coerceApi(p.api);
+    return {
+      provider: p.provider,
+      id: m.id,
+      name: m.name,
+      api,
+      baseUrl: p.baseUrl,
+      proxy: p.proxy,
+      contextWindow: m.contextWindow,
+      maxTokens: m.maxTokens,
+      reasoning: m.reasoning,
+      apiKey: readProviderApiKey(agentDir, provider),
+    };
+  }
+  // models.json 未命中 → 统一注册表（内置目录 / 扩展注册，扩展覆盖内置）
+  const registered = findProviderModel(provider, modelId);
+  if (registered) {
+    const isExtension = findProviderEntry(registered.provider)?.source === "extension";
+    return {
+      provider: registered.provider,
+      id: registered.id,
+      name: registered.name,
+      api: registered.api,
+      baseUrl: registered.baseUrl,
+      proxy: undefined,
+      contextWindow: registered.contextWindow,
+      maxTokens: registered.maxTokens,
+      reasoning: registered.reasoning,
+      apiKey: resolveProviderApiKey(registered.provider),
+      ...(isExtension ? { extension: true as const } : { builtin: true as const }),
+    };
+  }
+  return undefined;
 }
 
 export function listModelOptions(agentDir: string): ModelOptionView[] {

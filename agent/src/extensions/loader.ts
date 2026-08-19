@@ -36,6 +36,7 @@ import type {
   ToolDefinition,
 } from "./types.ts";
 import type { Model, Provider, ThinkingLevel } from "../ai/types.ts";
+import { applyRuntimeProviderRegistrations, unregisterProviderEntry } from "../providers/registry.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -84,17 +85,26 @@ export function createExtensionRuntime(): ExtensionRuntime {
         unsubscribe();
       };
     },
-    /** 注册提供商配置（延迟到扩展加载完成后生效） */
+    /** 注册提供商配置；初始加载期排队，加载后调用立即生效 */
     registerProvider(name, config, extensionPath = "") {
       runtime.pendingProviderRegistrations.push({ name, config, extensionPath });
+      applyRuntimeProviderRegistrations({
+        configs: runtime.pendingProviderRegistrations,
+        natives: runtime.pendingNativeProviderRegistrations,
+      });
     },
     /** 注册原生提供商实例 */
     registerNativeProvider(provider, extensionPath = "") {
       runtime.pendingNativeProviderRegistrations.push({ provider, extensionPath });
+      applyRuntimeProviderRegistrations({
+        configs: runtime.pendingProviderRegistrations,
+        natives: runtime.pendingNativeProviderRegistrations,
+      });
     },
-    /** 取消注册提供商 */
+    /** 取消注册提供商（含已应用的动态注册表条目） */
     unregisterProvider(name) {
       runtime.pendingProviderRegistrations = runtime.pendingProviderRegistrations.filter((item) => item.name !== name);
+      unregisterProviderEntry(name);
     },
     // 以下方法在扩展加载期间为占位函数，bind() 后会被替换为实际实现
     sendMessage: notInitialized,
@@ -395,6 +405,13 @@ export async function loadExtensions(options: {
       });
     }
   }
+
+  // 扩展工厂执行完毕：把收集到的供应商注册应用到动态注册表
+  // （先清空上一批扩展条目，支持扩展重载 / cwd 切换后旧注册不残留）
+  applyRuntimeProviderRegistrations({
+    configs: runtime.pendingProviderRegistrations,
+    natives: runtime.pendingNativeProviderRegistrations,
+  });
 
   return { extensions, errors, runtime };
 }

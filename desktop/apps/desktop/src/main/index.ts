@@ -72,6 +72,7 @@ type SettingsPatch = {
   apiKey?: string;
   cwd?: string;
   theme?: "dark" | "light";
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   extraExtensions?: string[];
 };
 
@@ -261,7 +262,29 @@ app.registerRPC("shareSession", (params: { id?: string }) => {
   return { started: true };
 });
 app.registerRPC("getSessionUsage", (params: { id?: string }) => requireHost().getSessionUsage(params?.id));
+app.registerRPC("setSessionName", (params: { name?: string }) => requireHost().setSessionName(String(params?.name ?? "")));
+app.registerRPC("forkSession", (params: { leafId?: string }) => requireHost().forkSession(params?.leafId));
 app.registerRPC("getModelsJsonConfig", () => requireHost().getModelsJsonConfig());
+app.registerRPC("listBuiltinProviders", () => requireHost().listBuiltinProviders());
+app.registerRPC("refreshProviderModels", (params: { provider?: string }) => {
+  if (!params?.provider?.trim()) throw new Error("refreshProviderModels requires provider");
+  return requireHost().refreshProviderModels(params.provider.trim());
+});
+app.registerRPC("testProviderConnection", (params: {
+  provider?: string;
+  baseUrl?: string;
+  api?: string;
+  apiKey?: string;
+  proxy?: string;
+}) =>
+  requireHost().testProviderConnection({
+    provider: params?.provider,
+    baseUrl: params?.baseUrl,
+    api: params?.api,
+    apiKey: params?.apiKey,
+    proxy: params?.proxy,
+  }),
+);
 app.registerRPC("listModelOptions", () => requireHost().listModelOptions());
 app.registerRPC("upsertCustomProvider", (params: {
   provider?: string;

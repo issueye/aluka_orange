@@ -104,6 +104,18 @@ export interface DesktopHost {
   getModelsJsonPreview(): ModelsJsonPreview;
   /** 获取 models.json 的完整配置视图 */
   getModelsJsonConfig(): ModelsJsonConfigView;
+  /** 内置厂商目录（含精编模型列表，不含密钥） */
+  listBuiltinProviders(): ReturnType<DesktopRuntime["listBuiltinProviders"]>;
+  /** 调用扩展的 refreshModels 动态发现模型 */
+  refreshProviderModels(provider: string): Promise<ReturnType<DesktopRuntime["refreshProviderModels"]>>;
+  /** 探测供应商连通性（GET models，不消耗 token） */
+  testProviderConnection(input: {
+    provider?: string;
+    baseUrl?: string;
+    api?: string;
+    apiKey?: string;
+    proxy?: string;
+  }): Promise<ReturnType<DesktopRuntime["testProviderConnection"]>>;
   /** 创建或更新自定义供应商与模型 */
   upsertCustomProvider(input: UpsertCustomProviderInput): ModelsJsonConfigView;
   /** 向已有供应商批量追加模型 */
@@ -137,6 +149,8 @@ export interface DesktopHost {
   shareSession(sessionId?: string): Promise<SessionShareOutcome>;
   /** 获取指定会话的 token 用量统计 */
   getSessionUsage(sessionId?: string): SessionUsageView;
+  setSessionName(name: string): { id: string; name?: string };
+  forkSession(leafId?: string): OpenedSession;
 }
 
 /**
@@ -227,6 +241,9 @@ export async function createDesktopHost(opts: {
     },
     getModelsJsonPreview: () => runtime.getModelsJsonPreview(),
     getModelsJsonConfig: () => runtime.getModelsJsonConfig(),
+    listBuiltinProviders: () => runtime.listBuiltinProviders(),
+    refreshProviderModels: (provider) => runtime.refreshProviderModels(provider),
+    testProviderConnection: (input) => runtime.testProviderConnection(input),
     upsertCustomProvider: (input) => runtime.upsertCustomProvider(input),
     addProviderModels: (input) => runtime.addProviderModels(input),
     fetchRemoteModels: (opts) => runtime.fetchRemoteModels(opts),
@@ -241,5 +258,7 @@ export async function createDesktopHost(opts: {
     exportSession: (format, sessionId) => runtime.exportSession(format, sessionId),
     shareSession: (sessionId) => runtime.shareSession(sessionId),
     getSessionUsage: (sessionId) => runtime.getSessionUsage(sessionId),
+    setSessionName: (name) => runtime.setSessionName(name),
+    forkSession: (leafId) => runtime.forkSession(leafId),
   };
 }

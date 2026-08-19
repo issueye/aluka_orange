@@ -15,6 +15,7 @@ import {
   readModelsJsonConfig,
   readProviderApiKey,
 } from "./models-json.ts";
+import { findProviderEntry, findProviderModel, providerEnvKeys, resolveProviderApiKey } from "./providers/registry.ts";
 
 export type ProviderPresetId = "openai" | "anthropic" | "openai-compatible";
 
@@ -95,11 +96,19 @@ export function defaultModel(overrides: Partial<Model> = {}): Model {
 }
 
 /**
- * 根据模型的 API 类型解析对应的 API Key（仅环境变量）
+ * 根据模型解析对应的 API Key（仅环境变量）
+ * 优先级：厂商专属环境变量（内置目录映射，如 GEMINI_API_KEY）> 通用回退
  * - Anthropic: 优先 ANTHROPIC_API_KEY，其次 ALUKA_API_KEY
  * - OpenAI / compatible: 优先 ALUKA_API_KEY，其次 OPENAI_API_KEY
  */
 export function resolveApiKey(model: Model): string | undefined {
+  // 注册表供应商：扩展 $ENV / ${ENV} 模板密钥优先，其次厂商声明的环境变量
+  const registeredKey = resolveProviderApiKey(model.provider);
+  if (registeredKey) return registeredKey;
+  for (const name of providerEnvKeys(model.provider)) {
+    const value = process.env[name];
+    if (value?.trim()) return value.trim();
+  }
   if (model.api === "anthropic-messages") {
     return process.env.ANTHROPIC_API_KEY ?? process.env.ALUKA_API_KEY;
   }
@@ -137,7 +146,7 @@ export type ResolveRuntimeApiKeyOptions = {
 export type RuntimeModelResolution = {
   model: Model;
   /** 解析来源，便于日志 / 调试 */
-  source: "explicit" | "settings+models.json" | "models.json" | "settings" | "env-default";
+  source: "explicit" | "settings+models.json" | "models.json" | "settings" | "env-default" | "builtin-catalog" | "extension-provider";
 };
 
 /**
@@ -216,12 +225,23 @@ export function resolveRuntimeModel(opts: ResolveRuntimeModelOptions = {}): Runt
     if (found) {
       const source =
         explicitProvider || explicitModel
-          ? "explicit"
+          ? found.extension ? "extension-provider" : found.builtin ? "builtin-catalog" : "explicit"
           : settings.provider || settings.model
-            ? "settings+models.json"
+            ? found.extension ? "extension-provider" : found.builtin ? "builtin-catalog" : "settings+models.json"
             : "models.json";
       return {
         model: modelFromLookup(found, baseUrlOverride),
+        source,
+      };
+    }
+    // models.json 未命中 → 统一注册表兜底（扩展覆盖内置；密钥走 env / settings）
+    const registered = findProviderModel(provider, modelId);
+    if (registered) {
+      const source = findProviderEntry(registered.provider)?.source === "extension"
+        ? "extension-provider"
+        : "builtin-catalog";
+      return {
+        model: defaultModel({ ...registered, baseUrl: baseUrlOverride || registered.baseUrl }),
         source,
       };
     }
