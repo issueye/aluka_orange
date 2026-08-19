@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    aluka_orange · 方案 A 「橙棱镜」
+    ─────────────────────────────────────────────
+    完整继承 Aluka 运行时 logo 的多面棱镜 "A" 几何骨架，
+    色谱从「青 × 品红」换为「琥珀 × 焦橙」，底色由深空蓝黑换为暖棕黑。
+    左翼：琥珀（温暖的高性能）；右翼：焦橙余烬（Agent 的炉火）。
+  -->
+  <defs>
+    <radialGradient id="a-bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#2A1A10"/>
+      <stop offset="60%" stop-color="#170F09"/>
+      <stop offset="100%" stop-color="#0C0805"/>
+    </radialGradient>
+    <linearGradient id="a-border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFC24D" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#FF7A1A" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FF4D00" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="a-left" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#FFD166"/>
+      <stop offset="50%" stop-color="#FF9E2C"/>
+      <stop offset="100%" stop-color="#F0731F"/>
+    </linearGradient>
+    <linearGradient id="a-right" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B2C"/>
+      <stop offset="60%" stop-color="#F04E23"/>
+      <stop offset="100%" stop-color="#B32D0C"/>
+    </linearGradient>
+    <linearGradient id="a-apex" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="30%" stop-color="#FFE8C2"/>
+      <stop offset="100%" stop-color="#FFB25E"/>
+    </linearGradient>
+    <linearGradient id="a-bridge" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#FFC24D"/>
+      <stop offset="50%" stop-color="#FFF3E0"/>
+      <stop offset="100%" stop-color="#FF5C1F"/>
+    </linearGradient>
+    <radialGradient id="a-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FF9E2C" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#FF6B2C" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="a-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#FF7A1A" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="16" stdDeviation="28" flood-color="#FF4D00" flood-opacity="0.22"/>
+    </filter>
+    <filter id="a-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="32"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#a-bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#a-border)" stroke-width="3.5" opacity="0.85"/>
+
+  <circle cx="256" cy="230" r="140" fill="url(#a-glow)" filter="url(#a-blur)" opacity="0.6"/>
+
+  <g filter="url(#a-shadow)">
+    <!-- 左翼：琥珀棱面 -->
+    <polygon points="256,92 256,196 142,352 96,352" fill="url(#a-left)"/>
+    <!-- 右翼：焦橙余烬棱面 -->
+    <polygon points="256,92 256,196 370,352 416,352" fill="url(#a-right)"/>
+    <!-- 顶部晶尖 -->
+    <polygon points="256,92 210,196 302,196" fill="url(#a-apex)" opacity="0.95"/>
+    <!-- 内部空心倒三角 -->
+    <polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/>
+    <!-- 光桥横梁 -->
+    <polygon points="172,284 340,284 322,316 190,316" fill="url(#a-bridge)"/>
+    <!-- 折射高光线 -->
+    <path d="M256 92 L256 196" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+    <path d="M256 92 L96 352" stroke="#FFFFFF" stroke-width="1.5" opacity="0.4"/>
+    <path d="M256 92 L416 352" stroke="#FFFFFF" stroke-width="1.5" opacity="0.4"/>
+  </g>
+</svg>

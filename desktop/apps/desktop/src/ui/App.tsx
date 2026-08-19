@@ -81,6 +81,16 @@ function preferTimeline(primary: TimelineItem[], fallback: TimelineItem[]): Time
   return primary.length >= fallback.length ? primary : fallback;
 }
 
+/** 思考深度选项 */
+const THINKING_LEVEL_OPTIONS = [
+  { value: "off", label: "思考 · 关闭" },
+  { value: "minimal", label: "思考 · 极低" },
+  { value: "low", label: "思考 · 低" },
+  { value: "medium", label: "思考 · 中" },
+  { value: "high", label: "思考 · 高" },
+  { value: "xhigh", label: "思考 · 极高" },
+] as const;
+
 /** 设置视图：当前用户配置 */
 type SettingsView = {
   model?: string;
@@ -88,6 +98,7 @@ type SettingsView = {
   baseUrl?: string;
   cwd?: string;
   theme?: "dark" | "light";
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   hasApiKey?: boolean;
   extraExtensions?: string[];
   providerPreset?: string;
@@ -351,7 +362,8 @@ export function App() {
         }
       }
       setActiveId(opened.id);
-      setSettings((s) => ({ ...s, cwd: opened.cwd }));
+      const s = await rpc<SettingsView>("getSettings");
+      setSettings({ ...s, cwd: opened.cwd });
       sessionRef.current = { cwd: opened.cwd, id: opened.id };
       const next = preferTimeline(
         await fetchHostTimeline(opened.cwd, opened.id),
@@ -838,7 +850,7 @@ export function App() {
               <PanelLeft size={16} />
             </button>
           ) : null}
-          <div className="title" data-aluka-drag="no-drag">
+          <div className="title" title={view === "chat" ? activeTitle : undefined}>
             {view === "chat" ? activeTitle : view === "settings" ? "设置" : "扩展与技能"}
           </div>
           {view === "chat" ? (
@@ -984,61 +996,84 @@ export function App() {
                   }}
                 />
                 <div className="composer-actions">
-                  <Select
-                    className="model-picker ui-select--compact"
-                    value={
-                      settings.provider && settings.model
-                        ? `${settings.provider}/${settings.model}`
-                        : ""
-                    }
-                    disabled={busy}
-                    placeholder="暂无模型 — 请到设置中添加"
-                    options={
-                      modelOptions.length
-                        ? modelOptions.map((m) => ({
-                            value: `${m.provider}/${m.id}`,
-                            label: `${m.provider}/${m.name || m.id}${m.configured ? "" : " · 缺密钥"}`,
-                          }))
-                        : settings.provider && settings.model
-                          ? [{
-                              value: `${settings.provider}/${settings.model}`,
-                              label: `${settings.provider}/${settings.model}`,
-                            }]
-                          : []
-                    }
-                    onChange={(next) => {
-                      const [provider, ...rest] = next.split("/");
-                      const modelId = rest.join("/");
-                      if (!provider || !modelId) return;
-                      void (async () => {
-                        try {
-                          const view = await rpc<SettingsView>("selectModel", { provider, modelId });
-                          setSettings(view ?? {});
-                          toast(`模型 → ${provider}/${modelId}`, "info");
-                        } catch (err) {
-                          toast(err instanceof Error ? err.message : String(err), "error");
-                        }
-                      })();
-                    }}
-                  />
-                  {busy ? (
-                    <button
-                      type="button"
-                      className="composer-run-btn"
-                      title="停止生成"
-                      aria-label="停止生成"
-                      onClick={() => void rpc("abortPrompt")}
-                    >
-                      <span className="composer-run-btn__orbit" aria-hidden="true">
-                        <span className="composer-run-btn__spark" />
-                      </span>
-                      <span className="composer-run-btn__stop" />
-                    </button>
-                  ) : (
-                    <Button type="submit" disabled={!prompt.trim()}>
-                      发送
-                    </Button>
-                  )}
+                  <div className="composer-actions-left">
+                    <Select
+                      className="model-picker ui-select--compact"
+                      value={
+                        settings.provider && settings.model
+                          ? `${settings.provider}/${settings.model}`
+                          : ""
+                      }
+                      disabled={busy}
+                      placeholder="暂无模型 — 请到设置中添加"
+                      options={
+                        modelOptions.length
+                          ? modelOptions.map((m) => ({
+                              value: `${m.provider}/${m.id}`,
+                              label: `${m.provider}/${m.name || m.id}${m.configured ? "" : " · 缺密钥"}`,
+                            }))
+                          : settings.provider && settings.model
+                            ? [{
+                                value: `${settings.provider}/${settings.model}`,
+                                label: `${settings.provider}/${settings.model}`,
+                              }]
+                            : []
+                      }
+                      onChange={(next) => {
+                        const [provider, ...rest] = next.split("/");
+                        const modelId = rest.join("/");
+                        if (!provider || !modelId) return;
+                        void (async () => {
+                          try {
+                            const view = await rpc<SettingsView>("selectModel", { provider, modelId });
+                            setSettings(view ?? {});
+                            toast(`模型 → ${provider}/${modelId}`, "info");
+                          } catch (err) {
+                            toast(err instanceof Error ? err.message : String(err), "error");
+                          }
+                        })();
+                      }}
+                    />
+                    <Select
+                      className="thinking-picker ui-select--compact"
+                      value={settings.thinkingLevel ?? "off"}
+                      disabled={busy}
+                      options={THINKING_LEVEL_OPTIONS.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      }))}
+                      onChange={(next) => {
+                        void (async () => {
+                          try {
+                            const view = await rpc<SettingsView>("patchSettings", { thinkingLevel: next });
+                            setSettings(view ?? {});
+                          } catch (err) {
+                            toast(err instanceof Error ? err.message : String(err), "error");
+                          }
+                        })();
+                      }}
+                    />
+                  </div>
+                  <div className="composer-actions-right">
+                    {busy ? (
+                      <button
+                        type="button"
+                        className="composer-run-btn"
+                        title="停止生成"
+                        aria-label="停止生成"
+                        onClick={() => void rpc("abortPrompt")}
+                      >
+                        <span className="composer-run-btn__orbit" aria-hidden="true">
+                          <span className="composer-run-btn__spark" />
+                        </span>
+                        <span className="composer-run-btn__stop" />
+                      </button>
+                    ) : (
+                      <Button type="submit" disabled={!prompt.trim()}>
+                        发送
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </form>
               <div className="usage-chip">{formatUsage(usage)}</div>

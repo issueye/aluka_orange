@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Filter, Folder, FolderPlus, PanelLeftClose, SquarePen, Trash2 } from "lucide-react";
+import { Logo } from "./Logo";
 
 export type WorkspaceSession = {
   id: string;
@@ -100,7 +101,7 @@ export function WorkspaceSidebar({
   return (
     <>
       <div className="sidebar-brand" data-aluka-drag>
-        <div className="logo" />
+        <Logo size={22} />
         <div className="name">Aluka</div>
         <button
           type="button"

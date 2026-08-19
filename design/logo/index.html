@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aluka Orange · Logo 提案</title>
+<style>
+  :root {
+    --bg: #191919;
+    --panel: #2d2d2d;
+    --soft: #272727;
+    --border: #3c3c3c;
+    --fg: #f7f7f7;
+    --muted: #acacac;
+    --dim: #747474;
+    --orange: #ff8a2a;
+    --amber: #ffc24d;
+    --radius: 12px;
+    --font: "Inter", "SF Pro Text", "Segoe UI", "Noto Sans SC", system-ui, sans-serif;
+    --mono: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font); font-size: 15px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1100px; margin: 0 auto; padding: 72px 40px 120px; }
+
+  /* ── 头部 ─────────────────────────────── */
+  .kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.22em;
+    color: var(--orange); text-transform: uppercase; margin-bottom: 14px;
+  }
+  h1 { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+  h1 .accent { color: var(--orange); }
+  .lede { color: var(--muted); max-width: 720px; margin-top: 14px; font-size: 16px; }
+  .meta {
+    margin-top: 26px; display: flex; gap: 22px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+  }
+  .meta span b { color: var(--muted); font-weight: 600; }
+
+  section { margin-top: 96px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .sec-no { font-family: var(--mono); font-size: 13px; color: var(--orange); }
+  h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+  .sec-sub { color: var(--muted); font-size: 14px; max-width: 760px; }
+
+  /* ── 设计输入 ─────────────────────────── */
+  .inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 28px; }
+  .input-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px;
+  }
+  .input-card h3 { font-size: 13px; font-weight: 700; color: var(--fg); margin-bottom: 10px; }
+  .input-card p, .input-card li { font-size: 13px; color: var(--muted); }
+  .input-card ul { padding-left: 16px; }
+  .input-card .dna { display: block; width: 96px; height: 96px; margin: 4px auto 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: var(--soft); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 10px 4px 5px;
+  }
+  .chip i { width: 16px; height: 16px; border-radius: 50%; display: block; border: 1px solid rgba(255,255,255,0.14); }
+
+  /* ── 方案卡 ───────────────────────────── */
+  .variant { margin-top: 36px; }
+  .variant-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; }
+  .variant-tag {
+    font-family: var(--mono); font-size: 12px; color: var(--orange);
+    border: 1px solid rgba(255,138,42,0.35); border-radius: 999px; padding: 2px 10px;
+  }
+  .variant-head h3 { font-size: 19px; font-weight: 700; }
+  .variant-head .en { color: var(--dim); font-size: 13px; font-family: var(--mono); }
+
+  .variant-grid { display: grid; grid-template-columns: 380px 1fr; gap: 16px; align-items: stretch; }
+  .hero-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile {
+    border-radius: var(--radius); display: flex; align-items: center; justify-content: center;
+    aspect-ratio: 1; border: 1px solid var(--border);
+  }
+  .tile.dark { background: #0e0e0e; }
+  .tile.light { background: #ffffff; }
+  .tile svg { width: 78%; height: 78%; display: block; }
+  .tile-label {
+    position: absolute; font-family: var(--mono); font-size: 10px; color: var(--dim);
+  }
+
+  .v-info { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 26px; }
+  .v-info p { font-size: 13.5px; color: var(--muted); }
+  .v-info p + p { margin-top: 10px; }
+  .v-info b { color: var(--fg); font-weight: 600; }
+
+  .v-rows { margin-top: 20px; display: grid; gap: 14px; }
+  .v-row { display: flex; align-items: center; gap: 14px; }
+  .v-row .label { font-family: var(--mono); font-size: 11px; color: var(--dim); width: 76px; flex: none; }
+
+  /* 尺寸阶梯 */
+  .ramp { display: flex; align-items: flex-end; gap: 18px; padding: 14px 16px; background: #0e0e0e; border: 1px solid var(--border); border-radius: 10px; }
+  .ramp .s { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .ramp .s span { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+  .ramp.light { background: #ffffff; }
+
+  /* 透明 mark 双底测试 */
+  .mark-test { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mark-test .cell { border-radius: 10px; border: 1px solid var(--border); display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+  .mark-test .cell.dk { background: #151515; color: #f0f0f0; }
+  .mark-test .cell.lt { background: #f6f6f6; color: #171717; }
+  .mark-test svg { width: 30px; height: 30px; flex: none; }
+  .mark-test .t { font-size: 13px; }
+
+  /* ── 场景模拟 ─────────────────────────── */
+  .scenes { display: grid; grid-template-columns: 300px 300px 1fr; gap: 16px; margin-top: 28px; align-items: stretch; }
+  .scene { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); display: flex; flex-direction: column; }
+  .scene .cap { font-family: var(--mono); font-size: 11px; color: var(--dim); padding: 10px 14px; background: var(--soft); border-top: 1px solid var(--border); }
+  .scene .body { flex: 1; }
+
+  /* 侧栏模拟 */
+  .side { width: 100%; height: 100%; display: flex; flex-direction: column; }
+  .side.dk { background: #151515; }
+  .side.lt { background: #f1f2f4; }
+  .side-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; }
+  .side-head svg { width: 24px; height: 24px; }
+  .side.dk .side-head .name { color: #f0f0f0; }
+  .side.lt .side-head .name { color: #171717; }
+  .side-head .name { font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
+  .side-head .ver { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-left: auto; }
+  .side-item { font-size: 12.5px; padding: 8px 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .side.dk .side-item.active { color: #f0f0f0; background: #272727; }
+  .side.lt .side-item.active { color: #171717; background: #e6e8eb; }
+
+  /* 关于页 lockup */
+  .about { background: #191919; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 30px; }
+  .about svg { width: 72px; height: 72px; }
+  .about .n { font-size: 16px; font-weight: 700; }
+  .about .v { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+  /* 托盘模拟 */
+  .tray { background: #202020; border-radius: 10px; border: 1px solid var(--border); display: flex; align-items: center; gap: 16px; padding: 10px 14px; }
+  .tray svg { width: 16px; height: 16px; display: block; }
+  .tray .sys { color: var(--dim); font-size: 11px; font-family: var(--mono); margin-left: auto; }
+
+  /* ── 对比表 ───────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin-top: 28px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; font-family: var(--mono); color: var(--dim); font-weight: 500; letter-spacing: 0.04em; }
+  td:first-child { color: var(--fg); font-weight: 600; white-space: nowrap; }
+  td { color: var(--muted); }
+  tr.rec td { background: rgba(255,138,42,0.06); }
+  .rec-badge { display: inline-block; font-family: var(--mono); font-size: 10px; color: var(--orange); border: 1px solid rgba(255,138,42,0.4); border-radius: 999px; padding: 1px 8px; margin-left: 8px; vertical-align: 1px; }
+
+  .note {
+    margin-top: 40px; background: var(--soft); border: 1px solid var(--border);
+    border-left: 3px solid var(--orange); border-radius: 8px; padding: 18px 22px; font-size: 13.5px; color: var(--muted);
+  }
+  .note b { color: var(--fg); }
+  footer { margin-top: 80px; font-family: var(--mono); font-size: 11px; color: var(--dim); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══ 头部 ═══ -->
+  <header>
+    <div class="kicker">Logo Proposal · aluka_orange</div>
+    <h1>Aluka <span class="accent">Orange</span> — 品牌标识提案</h1>
+    <p class="lede">
+      为 Aluka 家族的桌面 AI Agent 产品「aluka_orange」设计的三个标识方向。
+      三者共享同一设计输入，从「家族直系」到「差异化新颖」递进，供混合挑选。
+    </p>
+    <div class="meta">
+      <span><b>日期</b> 2026-08-19</span>
+      <span><b>载体</b> exe 图标（16–256px）· 托盘 · 侧栏 · 关于页</span>
+      <span><b>约束</b> 深浅双主题均成立</span>
+    </div>
+  </header>
+
+  <!-- ═══ 01 设计输入 ═══ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">01</span><h2>设计输入</h2></div>
+    <p class="sec-sub">所有方案都从这三项真实资产出发，不凭空造形。</p>
+    <div class="inputs">
+      <div class="input-card">
+        <h3>母品牌 DNA · Aluka 运行时</h3>
+        <svg class="dna" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="p-bg" cx="50%" cy="40%" r="60%"><stop offset="0%" stop-color="#161F36"/><stop offset="60%" stop-color="#0B0E17"/><stop offset="100%" stop-color="#05070B"/></radialGradient>
+            <linearGradient id="p-l" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#00F0FF"/><stop offset="50%" stop-color="#00A3FF"/><stop offset="100%" stop-color="#0055FF"/></linearGradient>
+            <linearGradient id="p-r" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#FF007A"/><stop offset="60%" stop-color="#7928CA"/><stop offset="100%" stop-color="#4A00E0"/></linearGradient>
+            <linearGradient id="p-a" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="30%" stop-color="#C4F1F9"/><stop offset="100%" stop-color="#00B4D8"/></linearGradient>
+            <linearGradient id="p-b" x1="0%" y1="50%" x2="100%" y2="50%"><stop offset="0%" stop-color="#00F0FF"/><stop offset="50%" stop-color="#E2E8F0"/><stop offset="100%" stop-color="#FF007A"/></linearGradient>
+          </defs>
+          <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#p-bg)"/>
+          <polygon points="256,92 256,196 142,352 96,352" fill="url(#p-l)"/>
+          <polygon points="256,92 256,196 370,352 416,352" fill="url(#p-r)"/>
+          <polygon points="256,92 210,196 302,196" fill="url(#p-a)" opacity="0.95"/>
+          <polygon points="256,228 198,310 314,310" fill="#0B0E17" opacity="0.92"/>
+          <polygon points="172,284 340,284 322,316 190,316" fill="url(#p-b)"/>
+        </svg>
+        <ul>
+          <li>多面棱镜「A」：极速执行 / JIT / 零开销</li>
+          <li>双色翼 = Go 效率 × JS 生态</li>
+          <li>深空底 + 圆角方（rx≈108/512）</li>
+        </ul>
+      </div>
+      <div class="input-card">
+        <h3>产品身份 · aluka_orange</h3>
+        <p style="margin-bottom:10px">项目名自带身份关键词「orange」，但当前 UI 是纯中性灰 —— 橙色身份尚未被视觉化，这正是 logo 要补上的空位。</p>
+        <div class="chips">
+          <span class="chip"><i style="background:#FFD166"></i>琥珀 #FFD166</span>
+          <span class="chip"><i style="background:#FF9E2C"></i>亮橙 #FF9E2C</span>
+          <span class="chip"><i style="background:#FF7A1A"></i>主橙 #FF7A1A</span>
+          <span class="chip"><i style="background:#F2600C"></i>焰橙 #F2600C</span>
+          <span class="chip"><i style="background:#B32D0C"></i>焦橙 #B32D0C</span>
+          <span class="chip"><i style="background:#1F1410"></i>暖黑 #1F1410</span>
+          <span class="chip"><i style="background:#FFF6EA;border-color:#ddd"></i>奶油 #FFF6EA</span>
+        </div>
+      </div>
+      <div class="input-card">
+        <h3>落位约束</h3>
+        <ul>
+          <li>exe / 托盘图标最小 16px —— 细节必须可舍弃</li>
+          <li>App 双主题：暗 #191919 / 亮 #ffffff</li>
+          <li>气质关键词：温暖的性能、本地终端里的炉火、可靠、克制</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 02 方案 A ═══ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">02</span><h2>三个方向</h2></div>
+    <p class="sec-sub">同一副骨架的三种性格：家族直系 → 实用扁平 → 差异化新颖。</p>
+
+    <!-- 方案 A -->
+    <div class="variant">
+      <div class="variant-head">
+        <span class="variant-tag">A</span>
+        <h3>橙棱镜</h3><span class="en">Orange Prism · 家族直系</span>
+      </div>
+      <div class="variant-grid">
+        <div class="hero-tiles">
+          <div class="tile dark">
+            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="va-bg" cx="50%" cy="40%" r="60%"><stop offset="0%" stop-color="#2A1A10"/><stop offset="60%" stop-color="#170F09"/><stop offset="100%" stop-color="#0C0805"/></radialGradient>
+                <linearGradient id="va-bd" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFC24D" stop-opacity="0.8"/><stop offset="50%" stop-color="#FF7A1A" stop-opacity="0.4"/><stop offset="100%" stop-color="#FF4D00" stop-opacity="0.8"/></linearGradient>
+                <linearGradient id="va-l" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#FFD166"/><stop offset="50%" stop-color="#FF9E2C"/><stop offset="100%" stop-color="#F0731F"/></linearGradient>
+                <linearGradient id="va-r" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#FF6B2C"/><stop offset="60%" stop-color="#F04E23"/><stop offset="100%" stop-color="#B32D0C"/></linearGradient>
+                <linearGradient id="va-a" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="30%" stop-color="#FFE8C2"/><stop offset="100%" stop-color="#FFB25E"/></linearGradient>
+                <linearGradient id="va-br" x1="0%" y1="50%" x2="100%" y2="50%"><stop offset="0%" stop-color="#FFC24D"/><stop offset="50%" stop-color="#FFF3E0"/><stop offset="100%" stop-color="#FF5C1F"/></linearGradient>
+                <radialGradient id="va-gl" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FF9E2C" stop-opacity="0.55"/><stop offset="100%" stop-color="#FF6B2C" stop-opacity="0"/></radialGradient>
+                <filter id="va-sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#FF7A1A" flood-opacity="0.35"/><feDropShadow dx="0" dy="16" stdDeviation="28" flood-color="#FF4D00" flood-opacity="0.22"/></filter>
+                <filter id="va-bl" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="32"/></filter>
+              </defs>
+              <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/>
+              <rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#va-bd)" stroke-width="3.5" opacity="0.85"/>
+              <circle cx="256" cy="230" r="140" fill="url(#va-gl)" filter="url(#va-bl)" opacity="0.6"/>
+              <g filter="url(#va-sh)">
+                <polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/>
+                <polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/>
+                <polygon points="256,92 210,196 302,196" fill="url(#va-a)" opacity="0.95"/>
+                <polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/>
+                <polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/>
+                <path d="M256 92 L256 196" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+                <path d="M256 92 L96 352" stroke="#FFFFFF" stroke-width="1.5" opacity="0.4"/>
+                <path d="M256 92 L416 352" stroke="#FFFFFF" stroke-width="1.5" opacity="0.4"/>
+              </g>
+            </svg>
+          </div>
+          <div class="tile light">
+            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+              <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/>
+              <rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#va-bd)" stroke-width="3.5" opacity="0.85"/>
+              <circle cx="256" cy="230" r="140" fill="url(#va-gl)" filter="url(#va-bl)" opacity="0.6"/>
+              <g filter="url(#va-sh)">
+                <polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/>
+                <polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/>
+                <polygon points="256,92 210,196 302,196" fill="url(#va-a)" opacity="0.95"/>
+                <polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/>
+                <polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div class="v-info">
+          <p><b>概念</b> — 像素级继承母品牌棱镜「A」的几何骨架，只换色谱：青→琥珀、品红→焦橙、深空蓝黑→暖棕黑。一眼即认「Aluka 家族的橙色款」，品牌延续性最大化。</p>
+          <p><b>适用</b> — 启动屏、官网、营销物料等大尺寸场景最有冲击力；16px 下棱面细节会糊成暖色方块（仍可辨识为 A）。</p>
+          <div class="v-rows">
+            <div class="v-row"><span class="label">尺寸阶梯</span>
+              <div class="ramp">
+                <div class="s"><svg width="16" height="16" viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/><polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/><polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/><polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/><polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/></svg><span>16</span></div>
+                <div class="s"><svg width="24" height="24" viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/><polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/><polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/><polygon points="256,92 210,196 302,196" fill="url(#va-a)" opacity="0.95"/><polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/><polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/></svg><span>24</span></div>
+                <div class="s"><svg width="32" height="32" viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/><polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/><polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/><polygon points="256,92 210,196 302,196" fill="url(#va-a)" opacity="0.95"/><polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/><polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/></svg><span>32</span></div>
+                <div class="s"><svg width="48" height="48" viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/><rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#va-bd)" stroke-width="3.5" opacity="0.85"/><circle cx="256" cy="230" r="140" fill="url(#va-gl)" filter="url(#va-bl)" opacity="0.6"/><g filter="url(#va-sh)"><polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/><polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/><polygon points="256,92 210,196 302,196" fill="url(#va-a)" opacity="0.95"/><polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/><polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/></g></svg><span>48</span></div>
+                <div class="s"><svg width="96" height="96" viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/><rect x="16" y="16" width="480" height="480" rx="108" fill="none" stroke="url(#va-bd)" stroke-width="3.5" opacity="0.85"/><circle cx="256" cy="230" r="140" fill="url(#va-gl)" filter="url(#va-bl)" opacity="0.6"/><g filter="url(#va-sh)"><polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/><polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/><polygon points="256,92 210,196 302,196" fill="url(#va-a)" opacity="0.95"/><polygon points="256,228 198,310 314,310" fill="#170F09" opacity="0.92"/><polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/><path d="M256 92 L256 196" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/></g></svg><span>96</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 B -->
+    <div class="variant">
+      <div class="variant-head">
+        <span class="variant-tag">B</span>
+        <h3>橙核</h3><span class="en">Spark Core · 实用扁平</span>
+      </div>
+      <div class="variant-grid">
+        <div class="hero-tiles">
+          <div class="tile dark">
+            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+              <defs><linearGradient id="vb-g" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFB35C"/><stop offset="55%" stop-color="#FF7A1A"/><stop offset="100%" stop-color="#F2530E"/></linearGradient></defs>
+              <rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/>
+              <rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#FFA452" stroke-opacity="0.16" stroke-width="2"/>
+              <g fill="url(#vb-g)">
+                <polygon points="214,136 256,136 208,416 128,416"/>
+                <polygon points="256,136 298,136 384,416 304,416"/>
+                <polygon points="225.1,316 258,316 258,356 218.3,356"/>
+                <polygon points="270,316 286.9,316 293.7,356 270,356"/>
+              </g>
+            </svg>
+          </div>
+          <div class="tile light">
+            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+              <rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/>
+              <rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#FFA452" stroke-opacity="0.16" stroke-width="2"/>
+              <g fill="url(#vb-g)">
+                <polygon points="214,136 256,136 208,416 128,416"/>
+                <polygon points="256,136 298,136 384,416 304,416"/>
+                <polygon points="225.1,316 258,316 258,356 218.3,356"/>
+                <polygon points="270,316 286.9,316 293.7,356 270,356"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div class="v-info">
+          <p><b>概念</b> — 扁平「A」单字标，去掉辉光与多面渐变，只留一个动作：<b>横杠右端的断口是一枚终端光标</b>（caret）。这是「AI Agent / 终端」的产品属性第一次进入字形本身。</p>
+          <p><b>适用</b> — 应用图标的主选方向：16px 托盘下轮廓依然清晰；暖黑 squircle 在深浅桌面壁纸、任务栏里都稳定。另有透明底 mark 版供 UI 内部使用（下见双底测试）。</p>
+          <div class="v-rows">
+            <div class="v-row"><span class="label">尺寸阶梯</span>
+              <div class="ramp">
+                <div class="s"><svg width="16" height="16" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg><span>16</span></div>
+                <div class="s"><svg width="24" height="24" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg><span>24</span></div>
+                <div class="s"><svg width="32" height="32" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/><rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#FFA452" stroke-opacity="0.16" stroke-width="2"/><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg><span>32</span></div>
+                <div class="s"><svg width="48" height="48" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/><rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#FFA452" stroke-opacity="0.16" stroke-width="2"/><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg><span>48</span></div>
+                <div class="s"><svg width="96" height="96" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/><rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#FFA452" stroke-opacity="0.16" stroke-width="2"/><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg><span>96</span></div>
+              </div>
+            </div>
+            <div class="v-row"><span class="label">mark 双底</span>
+              <div class="mark-test">
+                <div class="cell dk">
+                  <svg viewBox="0 0 512 512"><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg>
+                  <span class="t">暗底侧栏 #151515</span>
+                </div>
+                <div class="cell lt">
+                  <svg viewBox="0 0 512 512"><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg>
+                  <span class="t">亮底侧栏 #f1f2f4</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 C -->
+    <div class="variant">
+      <div class="variant-head">
+        <span class="variant-tag">C</span>
+        <h3>橙光剖面</h3><span class="en">Citrus Prism · 差异化</span>
+      </div>
+      <div class="variant-grid">
+        <div class="hero-tiles">
+          <div class="tile dark">
+            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+              <rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/>
+              <circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/>
+              <circle cx="256" cy="256" r="141" fill="#FFFEFA"/>
+              <g>
+                <path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/>
+                <path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/>
+                <path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/>
+                <path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/>
+                <path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/>
+                <path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/>
+                <path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/>
+                <path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/>
+              </g>
+              <circle cx="256" cy="256" r="54" fill="#FFFEFA"/>
+              <g>
+                <polygon points="256,234 256,252 234,282 224,282" fill="#FFB35C"/>
+                <polygon points="256,234 256,252 278,282 288,282" fill="#F2600C"/>
+                <polygon points="256,234 246,252 266,252" fill="#FFE3B8"/>
+                <polygon points="256,260 242,276 270,276" fill="#FFFEFA"/>
+                <polygon points="240,270 272,270 268,276 244,276" fill="#FF8A2A"/>
+              </g>
+            </svg>
+          </div>
+          <div class="tile light">
+            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+              <rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/>
+              <circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/>
+              <circle cx="256" cy="256" r="141" fill="#FFFEFA"/>
+              <g>
+                <path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/>
+                <path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/>
+                <path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/>
+                <path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/>
+                <path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/>
+                <path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/>
+                <path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/>
+                <path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/>
+              </g>
+              <circle cx="256" cy="256" r="54" fill="#FFFEFA"/>
+              <g>
+                <polygon points="256,234 256,252 234,282 224,282" fill="#FFB35C"/>
+                <polygon points="256,234 256,252 278,282 288,282" fill="#F2600C"/>
+                <polygon points="256,234 246,252 266,252" fill="#FFE3B8"/>
+                <polygon points="256,260 242,276 270,276" fill="#FFFEFA"/>
+                <polygon points="240,270 272,270 268,276 244,276" fill="#FF8A2A"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div class="v-info">
+          <p><b>概念</b> — 「orange」的具象转译：一枚抽象的橙子剖面（8 瓣放射、深浅交替），<b>中心白芯里嵌着母品牌的最小棱镜 A</b> —— 果实与晶体的对话。三个方案里唯一的浅底，气质从「工程感」转向「温暖的产品感」。</p>
+          <p><b>适用</b> — 记忆点最强、最不像「又一个开发者工具」的方向；但与母品牌的视觉联系最弱（只靠中心小 A 维持），16px 下剖面退化为一个橙色圆斑。</p>
+          <div class="v-rows">
+            <div class="v-row"><span class="label">尺寸阶梯</span>
+              <div class="ramp light">
+                <div class="s"><svg width="16" height="16" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/><circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/><circle cx="256" cy="256" r="141" fill="#FFFEFA"/><g><path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/><path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/><path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/><path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/><path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/><path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/><path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/><path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/></g></svg><span>16</span></div>
+                <div class="s"><svg width="24" height="24" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/><circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/><circle cx="256" cy="256" r="141" fill="#FFFEFA"/><g><path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/><path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/><path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/><path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/><path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/><path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/><path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/><path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/></g></svg><span>24</span></div>
+                <div class="s"><svg width="32" height="32" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/><circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/><circle cx="256" cy="256" r="141" fill="#FFFEFA"/><g><path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/><path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/><path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/><path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/><path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/><path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/><path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/><path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/></g><circle cx="256" cy="256" r="54" fill="#FFFEFA"/></svg><span>32</span></div>
+                <div class="s"><svg width="48" height="48" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/><circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/><circle cx="256" cy="256" r="141" fill="#FFFEFA"/><g><path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/><path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/><path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/><path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/><path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/><path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/><path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/><path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/></g><circle cx="256" cy="256" r="54" fill="#FFFEFA"/><g><polygon points="256,234 256,252 234,282 224,282" fill="#FFB35C"/><polygon points="256,234 256,252 278,282 288,282" fill="#F2600C"/><polygon points="256,234 246,252 266,252" fill="#FFE3B8"/></g></svg><span>48</span></div>
+                <div class="s"><svg width="96" height="96" viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/><circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/><circle cx="256" cy="256" r="141" fill="#FFFEFA"/><g><path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/><path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/><path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/><path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/><path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/><path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/><path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/><path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/></g><circle cx="256" cy="256" r="54" fill="#FFFEFA"/><g><polygon points="256,234 256,252 234,282 224,282" fill="#FFB35C"/><polygon points="256,234 256,252 278,282 288,282" fill="#F2600C"/><polygon points="256,234 246,252 266,252" fill="#FFE3B8"/><polygon points="256,260 242,276 270,276" fill="#FFFEFA"/><polygon points="240,270 272,270 268,276 244,276" fill="#FF8A2A"/></g></svg><span>96</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 03 场景模拟 ═══ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">03</span><h2>场景模拟</h2></div>
+    <p class="sec-sub">以方案 B（mark 版）为例，放进 App 真实组件里的样子 —— 侧栏头部、关于页、系统托盘。</p>
+    <div class="scenes">
+      <div class="scene">
+        <div class="body">
+          <div class="side dk">
+            <div class="side-head">
+              <svg viewBox="0 0 512 512"><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg>
+              <span class="name">Aluka Desktop</span><span class="ver">0.1.0</span>
+            </div>
+            <div class="side-item active"> ● 打包 aluka 运行时…</div>
+            <div class="side-item">会话管理器重构</div>
+            <div class="side-item">smoke 测试超时排查</div>
+            <div class="side-item">Extension runner 设计</div>
+          </div>
+        </div>
+        <div class="cap">暗色侧栏 · #151515（App 默认主题）</div>
+      </div>
+      <div class="scene">
+        <div class="body">
+          <div class="side lt">
+            <div class="side-head">
+              <svg viewBox="0 0 512 512"><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg>
+              <span class="name">Aluka Desktop</span><span class="ver">0.1.0</span>
+            </div>
+            <div class="side-item active"> ● 打包 aluka 运行时…</div>
+            <div class="side-item">会话管理器重构</div>
+            <div class="side-item">smoke 测试超时排查</div>
+            <div class="side-item">Extension runner 设计</div>
+          </div>
+        </div>
+        <div class="cap">亮色侧栏 · #f1f2f4</div>
+      </div>
+      <div class="scene">
+        <div class="body about">
+          <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/>
+            <rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#FFA452" stroke-opacity="0.16" stroke-width="2"/>
+            <g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g>
+          </svg>
+          <div class="n">Aluka Desktop</div>
+          <div class="v">0.1.0 · 阶段 5 · aluka_pi agent</div>
+        </div>
+        <div class="cap">关于页 lockup</div>
+      </div>
+    </div>
+    <div class="v-row" style="margin-top:16px">
+      <span class="label" style="font-family:var(--mono);font-size:11px;color:var(--dim);width:76px;flex:none">托盘 16px</span>
+      <div class="tray">
+        <svg viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1F1410"/><g fill="url(#vb-g)"><polygon points="214,136 256,136 208,416 128,416"/><polygon points="256,136 298,136 384,416 304,416"/><polygon points="225.1,316 258,316 258,356 218.3,356"/><polygon points="270,316 286.9,316 293.7,356 270,356"/></g></svg>
+        <svg viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="108" fill="url(#va-bg)"/><polygon points="256,92 256,196 142,352 96,352" fill="url(#va-l)"/><polygon points="256,92 256,196 370,352 416,352" fill="url(#va-r)"/><polygon points="172,284 340,284 322,316 190,316" fill="url(#va-br)"/></svg>
+        <svg viewBox="0 0 512 512"><rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA"/><circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" stroke-width="11"/><circle cx="256" cy="256" r="141" fill="#FFFEFA"/><g><path d="M260.7,122.1 A134,134 0 0 1 347.4,158.0 L294.2,215.0 A56,56 0 0 0 258.0,200.0 Z" fill="#FFA43B"/><path d="M354.0,164.6 A134,134 0 0 1 394.9,251.3 L312.0,254.0 A56,56 0 0 0 297.0,217.8 Z" fill="#F26A1B"/><path d="M394.9,260.7 A134,134 0 0 1 354.0,347.4 L297.0,294.2 A56,56 0 0 0 312.0,258.0 Z" fill="#FFA43B"/><path d="M347.4,354.0 A134,134 0 0 1 260.7,394.9 L258.0,312.0 A56,56 0 0 0 294.2,297.0 Z" fill="#F26A1B"/><path d="M251.3,394.9 A134,134 0 0 1 164.6,354.0 L217.8,297.0 A56,56 0 0 0 254.0,312.0 Z" fill="#FFA43B"/><path d="M158.0,347.4 A134,134 0 0 1 121.1,260.7 L200.0,258.0 A56,56 0 0 0 215.0,294.2 Z" fill="#F26A1B"/><path d="M121.1,251.3 A134,134 0 0 1 158.0,164.6 L215.0,217.8 A56,56 0 0 0 200.0,254.0 Z" fill="#FFA43B"/><path d="M164.6,158.0 A134,134 0 0 1 251.3,122.1 L254.0,200.0 A56,56 0 0 0 217.8,215.0 Z" fill="#F26A1B"/></g></svg>
+        <span class="sys">A · B · C 并排 @16px</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 04 对比与推荐 ═══ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">04</span><h2>对比与推荐</h2></div>
+    <table>
+      <thead>
+        <tr><th>方案</th><th>家族延续</th><th>小尺寸(16px)</th><th>产品属性表达</th><th>气质</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>A 橙棱镜</td><td>★★★ 几何完全一致</td><td>★★ 棱面细节丢失</td><td>★ 速度 / 引擎</td><td>工程、未来感</td>
+        </tr>
+        <tr class="rec">
+          <td>B 橙核<span class="rec-badge">推荐主图标</span></td><td>★★ A 字骨架延续</td><td>★★★ 轮廓清晰</td><td>★★★ 终端光标 = Agent</td><td>克制、现代</td>
+        </tr>
+        <tr>
+          <td>C 橙光剖面</td><td>★ 仅中心小 A</td><td>★★ 退化为圆斑</td><td>★★「orange」具象</td><td>温暖、产品化</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <b>设计假设（未与你确认前的心智占位）：</b>「orange」按项目名的字面身份处理为品牌主色；产品定位按「本地优先的桌面 AI Agent 终端」理解。推荐组合 —— <b>B 作 exe / 托盘主图标</b>（小尺寸是硬指标），<b>A 作启动屏与营销大图</b>（家族冲击力），C 若更想要「温暖工具」气质可整体替换 B。三个 SVG 均为纯矢量，选定后可一键生成 16–256px 的 icon.ico 并接入 <b>build-gui</b> 流水线。
+    </div>
+  </section>
+
+  <footer>
+    <span>aluka_orange · design/logo</span>
+    <span>SVG 源文件与本页同目录</span>
+  </footer>
+</div>
+</body>
+</html>

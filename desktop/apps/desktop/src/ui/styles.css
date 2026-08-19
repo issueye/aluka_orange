@@ -70,13 +70,13 @@
   --muted-foreground: #6b6b6b;
   --hover-fill: var(--surface-muted);
   --destructive: #c0392b;
-  --border: #cdd0d8;
-  --border-subtle: color-mix(in srgb, #000 8%, transparent);
+  --border: #e2e5eb;
+  --border-subtle: color-mix(in srgb, #000 6%, transparent);
   --link: #0a84ff;
   --sidebar: #f1f2f4;
-  --sidebar-border: #cdd0d8;
+  --sidebar-border: #e2e5eb;
   --bg-composer: #ffffff;
-  --composer-border: color-mix(in srgb, #9aa0ab 36%, #ffffff);
+  --composer-border: #e2e5eb;
   --user-bubble: var(--surface-soft);
   --tool-bubble: #f3f3f0;
   --code-bg: #f4f4f5;
@@ -141,14 +141,6 @@ select {
   height: var(--titlebar-h);
   padding: 0 12px 0 14px;
   border-bottom: 1px solid var(--sidebar-border);
-}
-
-.sidebar-brand .logo {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #4c8dff, #3ecf8e);
-  flex-shrink: 0;
 }
 
 .sidebar-brand .name {
@@ -737,7 +729,6 @@ select {
   app-region: drag;
 }
 
-.thread-header .title,
 .window-controls,
 .window-controls button,
 .sidebar-brand .icon-btn,
@@ -1128,9 +1119,24 @@ select {
 
 .composer-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.composer-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.composer-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .composer-run-btn {
@@ -1222,10 +1228,17 @@ select {
 }
 
 .model-picker {
-  margin-right: auto;
-  max-width: 46%;
+  max-width: min(46%, 280px);
   min-width: 160px;
   width: auto;
+  flex: 1 1 160px;
+}
+
+.thinking-picker {
+  max-width: 148px;
+  min-width: 124px;
+  width: auto;
+  flex: 0 0 auto;
 }
 
 .providers-panel {
@@ -1251,6 +1264,103 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* —— 内置厂商目录 —— */
+.builtin-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.builtin-section__head strong {
+  font-size: 13px;
+}
+
+.builtin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 10px;
+}
+
+.builtin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.builtin-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.builtin-card__head strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builtin-card__meta {
+  margin: 0;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.builtin-card__models {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.builtin-card__models li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.builtin-card__models li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.builtin-card__models li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builtin-card__models li.is-active {
+  background: var(--hover-fill);
+  color: var(--foreground);
+}
+
+.builtin-card__link {
+  margin-left: auto;
+  color: var(--link);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.builtin-card__link:hover {
+  text-decoration: underline;
+}
+
+.builtin-card .row-actions {
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .provider-groups {
@@ -1315,6 +1425,11 @@ select {
 .auth-badge.miss {
   background: color-mix(in srgb, var(--warning) 16%, transparent);
   color: var(--warning);
+}
+
+.auth-badge.ext {
+  background: color-mix(in srgb, var(--link) 14%, transparent);
+  color: var(--link);
 }
 
 .model-row {

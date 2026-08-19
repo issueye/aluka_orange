@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    aluka_orange · 方案 B 透明底 mark 版
+    ─────────────────────────────────────────────
+    不带 squircle 底的纯字形，深浅底通用（橙为中间明度，两边都成立）。
+    用于 UI 内部：侧栏头部、关于页、启动屏、状态栏。
+  -->
+  <defs>
+    <linearGradient id="bm-glyph" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#FFB35C"/>
+      <stop offset="55%" stop-color="#FF7A1A"/>
+      <stop offset="100%" stop-color="#E8500E"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#bm-glyph)">
+    <polygon points="214,136 256,136 208,416 128,416"/>
+    <polygon points="256,136 298,136 384,416 304,416"/>
+    <polygon points="225.1,316 258,316 258,356 218.3,356"/>
+    <polygon points="270,316 286.9,316 293.7,356 270,356"/>
+  </g>
+</svg>
