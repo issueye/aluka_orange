@@ -143,6 +143,16 @@ export class ExtensionRunner {
     this.model = model;
   }
 
+  /** 当前思考深度等级 */
+  getThinkingLevel(): ThinkingLevel {
+    return this.thinkingLevel;
+  }
+
+  /** 设置思考深度等级 */
+  setThinkingLevel(level: ThinkingLevel): void {
+    this.thinkingLevel = level;
+  }
+
   /** 设置当前会话 */
   setSession(session: SessionManager): void {
     this.session = session;

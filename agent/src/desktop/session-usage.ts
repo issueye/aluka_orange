@@ -61,12 +61,17 @@ export function sumUsageFromMessages(messages: AgentMessage[]): SessionUsageTota
   return totals;
 }
 
-/** 从会话 JSONL 条目恢复用量（turn.messages 内 assistant.usage） */
+/** 从会话 JSONL 条目恢复用量（message / compaction.usage） */
 export function sumUsageFromSessionEntries(entries: SessionEntry[]): SessionUsageTotals {
   let totals = emptyUsageTotals();
   for (const entry of entries) {
-    if (entry.type !== "turn" || !Array.isArray(entry.messages)) continue;
-    totals = mergeUsageTotals(totals, sumUsageFromMessages(entry.messages as AgentMessage[]));
+    if (entry.type === "message") {
+      totals = mergeUsageTotals(totals, sumUsageFromMessages([entry.message as AgentMessage]));
+      continue;
+    }
+    if (entry.type === "compaction" && entry.usage) {
+      totals = addUsage(totals, entry.usage);
+    }
   }
   return totals;
 }

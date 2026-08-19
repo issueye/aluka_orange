@@ -7,6 +7,7 @@ import path from "node:path";
 import type { SessionEntry } from "../session/manager.ts";
 import { SessionManager } from "../session/manager.ts";
 import { textFrom, type AgentMessage } from "../agent/types.ts";
+import { sessionEntryToContextMessages } from "../session/format.ts";
 
 export type SessionExportFormat = "json" | "markdown" | "jsonl";
 
@@ -29,32 +30,25 @@ function safeName(id: string): string {
   return id.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 80) || "session";
 }
 
-function entryUserText(entry: SessionEntry): string | undefined {
-  if (entry.type === "user" && typeof entry.text === "string") return entry.text;
-  return undefined;
-}
-
-function messagesFromTurn(entry: SessionEntry): AgentMessage[] {
-  if (entry.type !== "turn" || !Array.isArray(entry.messages)) return [];
-  return entry.messages as AgentMessage[];
+function messagesFromEntries(entries: SessionEntry[]): AgentMessage[] {
+  return entries.flatMap(sessionEntryToContextMessages);
 }
 
 export function renderSessionMarkdown(sessionId: string, entries: SessionEntry[]): string {
   const lines: string[] = [`# Session ${sessionId}`, "", `Exported: ${new Date().toISOString()}`, ""];
-  for (const entry of entries) {
-    const user = entryUserText(entry);
-    if (user) {
-      lines.push(`## User`, "", user, "");
-      continue;
-    }
-    for (const message of messagesFromTurn(entry)) {
-      if (message.role === "assistant") {
-        lines.push(`## Assistant`, "", textFrom(message) || "(empty)", "");
-      } else if (message.role === "toolResult") {
-        lines.push(`### Tool · ${message.toolName ?? "tool"}`, "", "```", textFrom(message) || "", "```", "");
-      } else if (message.role === "user") {
-        lines.push(`## User`, "", textFrom(message), "");
-      }
+  for (const message of messagesFromEntries(entries)) {
+    if (message.role === "user") {
+      lines.push(`## User`, "", textFrom(message), "");
+    } else if (message.role === "assistant") {
+      lines.push(`## Assistant`, "", textFrom(message) || "(empty)", "");
+    } else if (message.role === "toolResult") {
+      lines.push(`### Tool · ${message.toolName ?? "tool"}`, "", "```", textFrom(message) || "", "```", "");
+    } else if (message.role === "custom" && message.display) {
+      lines.push(`## Custom · ${message.customType}`, "", textFrom(message), "");
+    } else if (message.role === "compactionSummary") {
+      lines.push(`## Compaction`, "", message.summary, "");
+    } else if (message.role === "branchSummary") {
+      lines.push(`## Branch summary`, "", message.summary, "");
     }
   }
   return `${lines.join("\n").trim()}\n`;
@@ -63,7 +57,7 @@ export function renderSessionMarkdown(sessionId: string, entries: SessionEntry[]
 export function renderSessionJson(sessionId: string, file: string, entries: SessionEntry[]): string {
   return `${JSON.stringify(
     {
-      version: 1,
+      version: 3,
       sessionId,
       sourceFile: file,
       exportedAt: new Date().toISOString(),
@@ -90,13 +84,15 @@ export function exportSessionToDir(opts: {
     let body: string;
     if (opts.format === "markdown") {
       filename = `${base}.md`;
-      body = renderSessionMarkdown(session.id, entries);
+      body = renderSessionMarkdown(session.getSessionName() || session.id, entries);
     } else if (opts.format === "jsonl") {
       filename = `${base}.jsonl`;
-      body = entries.map((e) => JSON.stringify(e)).join("\n") + (entries.length ? "\n" : "");
+      const header = session.getHeader();
+      const lines = [header, ...entries].filter(Boolean).map((e) => JSON.stringify(e));
+      body = lines.join("\n") + (lines.length ? "\n" : "");
     } else {
       filename = `${base}.json`;
-      body = renderSessionJson(session.id, session.file, entries);
+      body = renderSessionJson(session.getSessionId(), session.file, entries);
     }
     const out = path.join(opts.exportDir, filename);
     fs.writeFileSync(out, body, "utf8");

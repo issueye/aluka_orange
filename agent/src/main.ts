@@ -64,11 +64,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     apiKey: settings.apiKey,
   });
 
-  // 初始化会话管理器
+  // 初始化会话管理器（树形 JSONL，打开时会迁移旧的 user/turn 文件）
   const sessionDir = getSessionsDir(cwd);
-  const session = args.continue
-    ? (SessionManager.latest(sessionDir) ?? SessionManager.create(sessionDir))
-    : SessionManager.create(sessionDir);
+  let session: SessionManager;
+  if (args.session) {
+    session = SessionManager.open(sessionDir, args.session, cwd);
+  } else if (args.continue) {
+    session = SessionManager.continueRecent(cwd, sessionDir);
+  } else {
+    session = SessionManager.create(sessionDir, undefined, cwd);
+  }
+  if (args.name) session.appendSessionInfo(args.name);
 
   // 创建扩展运行器，设置运行模式（print 或 tui）
   const runner = new ExtensionRunner(loaded.extensions, loaded.runtime, cwd, args.print ? "print" : "tui");
@@ -131,11 +137,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   runner.setSystemPrompt(systemPrompt);
 
   // 触发会话启动和资源发现事件
-  await runner.emitEvent({ type: "session_start", reason: args.continue ? "resume" : "startup" });
+  await runner.emitEvent({
+    type: "session_start",
+    reason: args.session || args.continue ? "resume" : "startup",
+  });
   await runner.emitEvent({ type: "resources_discover", cwd, reason: "startup" });
 
-  // 消息历史记录
-  const history: AgentMessage[] = [];
+  // 从当前 leaf 路径恢复 LLM 上下文
+  const history: AgentMessage[] = [...session.buildSessionContext().messages];
 
   // 如果指定了提示词，直接执行一次性交互
   if (args.prompt) {
@@ -156,7 +165,37 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       // 处理内置命令
       if (line === "/quit" || line === "/exit") break;
       if (line === "/help") {
-        process.stdout.write(`${HELP}\nCommands: ${runner.getCommands().map((command) => `/${command.name}`).join(" ")}\n`);
+        process.stdout.write(`${HELP}\nCommands: /name /session /fork ${runner.getCommands().map((command) => `/${command.name}`).join(" ")}\n`);
+        continue;
+      }
+      if (line === "/session") {
+        const name = session.getSessionName();
+        process.stdout.write(
+          `session ${session.id}\nfile ${session.file}\nentries ${session.getEntries().length}\nmessages ${history.length}${name ? `\nname ${name}` : ""}\n`,
+        );
+        continue;
+      }
+      if (line.startsWith("/name")) {
+        const name = line.slice(5).trim();
+        if (!name) {
+          process.stdout.write(`${session.getSessionName() ?? "(unnamed)"}\n`);
+        } else {
+          session.appendSessionInfo(name);
+          process.stdout.write(`named: ${name}\n`);
+        }
+        continue;
+      }
+      if (line === "/fork") {
+        const leaf = session.getLeafId();
+        if (!leaf) {
+          process.stderr.write("nothing to fork\n");
+          continue;
+        }
+        session.createBranchedSession(leaf);
+        runner.setSession(session);
+        history.length = 0;
+        history.push(...session.buildSessionContext().messages);
+        process.stdout.write(`forked ${session.id}\n`);
         continue;
       }
 

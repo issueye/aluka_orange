@@ -29,10 +29,22 @@ describe("session list/open", () => {
     assert.ok(listed.length >= 2);
     const opened = SessionManager.open(dir, "a");
     assert.equal(opened.id, "a");
-    assert.ok(opened.getEntries().some((e) => e.type === "user"));
+    assert.ok(opened.getEntries().some((e) => e.type === "message"));
+    assert.ok(opened.buildSessionContext().messages.some((m) => m.role === "user"));
     assert.equal(SessionManager.remove(dir, "a"), true);
     assert.equal(fs.existsSync(path.join(dir, "a.jsonl")), false);
     assert.equal(SessionManager.remove(dir, "a"), false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("sets a display name used by list()", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-sess-"));
+    const session = SessionManager.create(dir, "named.jsonl");
+    session.append({ type: "user", text: "first prompt text" });
+    session.appendSessionInfo("Refactor auth");
+    const listed = SessionManager.list(dir);
+    assert.equal(listed[0]?.name, "Refactor auth");
+    assert.equal(listed[0]?.title, "Refactor auth");
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

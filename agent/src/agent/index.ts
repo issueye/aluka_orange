@@ -17,6 +17,8 @@ export {
   type AgentToolCall,
   type AgentToolResult,
   type AgentToolUpdateCallback,
+  type BranchSummaryMessage,
+  type CompactionSummaryMessage,
   type CustomMessage,
 } from "./types.ts";
 

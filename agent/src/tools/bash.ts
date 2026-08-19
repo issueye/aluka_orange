@@ -61,14 +61,14 @@ function runShell(
     let stderr = "";
 
     // 收集标准输出并流式回调
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stdout += text;
       onChunk(text);
     });
 
     // 收集标准错误并流式回调
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stderr += text;
       onChunk(text);

@@ -14,7 +14,7 @@ function Resolve-Aluka {
   if ($env:ALUKA -and (Test-Path $env:ALUKA)) { return $env:ALUKA }
   $candidates = @(
     "E:\codes\go_projects\aluka_lang\aluka_lang\bin\aluka.exe",
-    (Join-Path $Root "..\..\go_projects\aluka_lang\aluka_lang\bin\aluka.exe")
+    (Join-Path $Root "..\..\..\go_projects\aluka_lang\aluka_lang\bin\aluka.exe")
   )
   foreach ($c in $candidates) {
     if (Test-Path $c) { return (Resolve-Path $c).Path }

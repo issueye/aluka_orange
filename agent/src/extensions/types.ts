@@ -182,8 +182,13 @@ export interface CompactOptions {
 
 export interface SessionManager {
   file: string;
-  append(entry: unknown): void;
+  append(entry: unknown): unknown;
   getEntries(): unknown[];
+  getSessionFile?(): string | undefined;
+  getSessionId?(): string;
+  getSessionName?(): string | undefined;
+  appendMessage?(message: unknown): string;
+  buildSessionContext?(): { messages: unknown[] };
 }
 
 export type ReadonlySessionManager = Pick<SessionManager, "file" | "getEntries">;

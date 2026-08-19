@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAluka } from "../../../scripts/resolve-aluka.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, "..");
@@ -20,19 +21,6 @@ const entry = path.join(appRoot, "src", "main", "index.ts");
 const icon = path.join(appRoot, "assets", "icon.ico");
 const defaultOut = path.resolve(appRoot, "../../../dist/AlukaDesktop.exe");
 const outfile = process.env.OUT?.trim() || defaultOut;
-
-function resolveAluka() {
-  const fromEnv = process.env.ALUKA?.trim();
-  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
-  const candidates = [
-    path.resolve(appRoot, "../../../../go_projects/aluka_lang/aluka_lang/bin/aluka.exe"),
-    path.resolve(appRoot, "../../../../go_projects/aluka_lang/aluka_lang/bin/aluka"),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return "aluka";
-}
 
 if (!fs.existsSync(uiIndex)) {
   console.error(`[build-gui] UI missing: ${uiIndex}\nRun: npm run build:ui`);
@@ -45,7 +33,7 @@ if (!fs.existsSync(entry)) {
 
 fs.mkdirSync(path.dirname(outfile), { recursive: true });
 
-const aluka = resolveAluka();
+const aluka = resolveAluka(appRoot);
 const args = [
   "build",
   "--compile",

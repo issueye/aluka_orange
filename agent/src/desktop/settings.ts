@@ -7,8 +7,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import type { ThinkingLevel } from "../ai/types.ts";
 import { getAgentDir } from "../config.ts";
 import { hasRuntimeApiKey, resolveRuntimeModel } from "../models.ts";
+
+const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
 export type ThemeId = "dark" | "light";
 
@@ -24,6 +27,8 @@ export interface DesktopSettings {
   workspaces?: string[];
   /** UI 主题 */
   theme?: ThemeId;
+  /** 思考深度（默认 off） */
+  thinkingLevel?: ThinkingLevel;
   /** 额外扩展路径（绝对或相对 cwd） */
   extraExtensions?: string[];
 }
@@ -46,6 +51,9 @@ function normalizeLoaded(raw: SettingsFile): DesktopSettings {
   }
   if (out.theme !== "dark" && out.theme !== "light") {
     delete out.theme;
+  }
+  if (out.thinkingLevel && !THINKING_LEVELS.has(out.thinkingLevel)) {
+    delete out.thinkingLevel;
   }
   if (Array.isArray(out.workspaces)) {
     const dirs = out.workspaces.map(String).map((p) => p.trim()).filter(Boolean);

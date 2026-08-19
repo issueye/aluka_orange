@@ -24,7 +24,11 @@ import type {
 } from "../ai/types.ts";
 
 /** Agent 消息类型：可以是 LLM 消息或自定义消息 */
-export type AgentMessage = LlmMessage | CustomMessage;
+export type AgentMessage =
+  | LlmMessage
+  | CustomMessage
+  | BranchSummaryMessage
+  | CompactionSummaryMessage;
 
 /**
  * 自定义消息
@@ -40,7 +44,39 @@ export interface CustomMessage {
   display?: boolean;
   /** 附加的元数据 */
   details?: unknown;
+  timestamp?: number;
 }
+
+/** 切分支时对放弃路径的摘要，进入 LLM 上下文 */
+export interface BranchSummaryMessage {
+  role: "branchSummary";
+  summary: string;
+  fromId: string;
+  timestamp: number;
+}
+
+/** 上下文压缩摘要，进入 LLM 上下文 */
+export interface CompactionSummaryMessage {
+  role: "compactionSummary";
+  summary: string;
+  tokensBefore: number;
+  timestamp: number;
+}
+
+export const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
+
+<summary>
+`;
+
+export const COMPACTION_SUMMARY_SUFFIX = `
+</summary>`;
+
+export const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch that this conversation came back from:
+
+<summary>
+`;
+
+export const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
 /**
  * 工具执行结果
@@ -181,6 +217,20 @@ export function convertToLlm(messages: AgentMessage[]): LlmMessage[] {
       out.push({ role: "user", content: message.content });
       continue;
     }
+    if (message.role === "compactionSummary") {
+      out.push({
+        role: "user",
+        content: [{ type: "text", text: `${COMPACTION_SUMMARY_PREFIX}${message.summary}${COMPACTION_SUMMARY_SUFFIX}` }],
+      });
+      continue;
+    }
+    if (message.role === "branchSummary") {
+      out.push({
+        role: "user",
+        content: [{ type: "text", text: `${BRANCH_SUMMARY_PREFIX}${message.summary}${BRANCH_SUMMARY_SUFFIX}` }],
+      });
+      continue;
+    }
     out.push(message);
   }
   return out;
@@ -191,6 +241,9 @@ export function convertToLlm(messages: AgentMessage[]): LlmMessage[] {
  * 支持助手消息、用户消息、工具结果和自定义消息
  */
 export function textFrom(message: AgentMessage): string {
+  if (message.role === "compactionSummary" || message.role === "branchSummary") {
+    return message.summary;
+  }
   const parts = message.role === "toolResult" || message.role === "user" || message.role === "assistant" || message.role === "custom"
     ? message.content
     : [];

@@ -1,7 +1,9 @@
 # Aluka Desktop
 
-Aluka GUI（WebView2）桌面壳 + [`aluka_pi`](../aluka_pi) Agent 运行时。  
-绿场项目：对标 [Zeno](../aluka_pi_desktop) 的能力面，**不是** Electron 移植。
+Aluka GUI（WebView2）桌面壳 + 本仓库 [`agent/`](../agent) 运行时。  
+绿场项目：对标 Zeno 的能力面，**不是** Electron 移植。
+
+Aluka 语言运行时默认：`E:\codes\go_projects\aluka_lang\aluka_lang`（`bin\aluka.exe`）。也可设 `ALUKA` 或加入 PATH。
 
 ## 文档
 
@@ -19,9 +21,8 @@ Aluka GUI（WebView2）桌面壳 + [`aluka_pi`](../aluka_pi) Agent 运行时。
 cd E:\codes\go_projects\aluka_lang\aluka_lang
 CGO_ENABLED=0 go build -o bin\aluka.exe .\cmd\aluka
 
-cd E:\codes\ts_projects\aluka_desktop
+cd E:\codes\ts_projects\aluka_orange\desktop
 npm run install:app
-$env:ALUKA = "E:\codes\go_projects\aluka_lang\aluka_lang\bin\aluka.exe"
 npm run build:ui
 npm start
 # 或冒烟：

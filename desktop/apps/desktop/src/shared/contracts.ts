@@ -58,6 +58,7 @@ export interface SettingsView {
   cwd?: string;
   lastSessionId?: string;
   theme?: "dark" | "light";
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   hasApiKey: boolean;
   extraExtensions?: string[];
   providerPreset?: "openai" | "anthropic" | "openai-compatible";

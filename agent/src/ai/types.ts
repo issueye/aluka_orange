@@ -19,7 +19,7 @@ export function coerceApi(raw: unknown): Api {
 }
 
 /** 思考深度等级（控制模型的推理深度） */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high";
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 /** 工具执行模式 */
 export type ToolExecutionMode = "sequential" | "parallel";

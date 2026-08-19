@@ -82,6 +82,10 @@ export type CliArgs = {
   version: boolean;
   /** 是否继续上一次会话 */
   continue: boolean;
+  /** 会话显示名 */
+  name?: string;
+  /** 打开指定会话（文件路径或 id） */
+  session?: string;
 };
 
 /**
@@ -129,6 +133,10 @@ export function parseArgs(argv: string[]): CliArgs {
       args.cwd = argv[++i] ?? args.cwd;
     } else if (token === "-c" || token === "--continue") {
       args.continue = true;
+    } else if (token === "-n" || token === "--name") {
+      args.name = argv[++i];
+    } else if (token === "--session") {
+      args.session = argv[++i];
     } else if (token === "-h" || token === "--help") {
       args.help = true;
     } else if (token === "-v" || token === "--version") {
@@ -163,6 +171,8 @@ Flags:
   --provider <name>      Provider id (openai / anthropic / custom in models.json)
   --cwd <dir>            Working directory
   -c, --continue         Resume last session
+  -n, --name <name>      Set session display name
+  --session <id|path>    Open a specific session file or id
   -h, --help             Help
   -v, --version          Version
 

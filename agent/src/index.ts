@@ -63,7 +63,15 @@ export { ExtensionRunner } from "./extensions/runner.ts";
 export { createEventBus } from "./extensions/event-bus.ts";
 
 // 会话管理
-export { SessionManager, type SessionSummary, type SessionEntry } from "./session/manager.ts";
+export {
+  SessionManager,
+  CURRENT_SESSION_VERSION,
+  buildSessionContext,
+  type SessionSummary,
+  type SessionEntry,
+  type SessionHeader,
+  type SessionContext,
+} from "./session/manager.ts";
 
 // 桌面 Host API（Aluka Desktop）
 export {
