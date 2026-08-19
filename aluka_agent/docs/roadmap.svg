@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1240" width="1600" height="1240" role="img" aria-labelledby="title desc">
+  <title id="title">Aluka Code Roadmap</title>
+  <desc id="desc">Shipped file map plus Next and Later work ordered by dependency.</desc>
+  <defs>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=Noto+Serif+SC:wght@600;700&amp;family=Syne:wght@800&amp;display=swap");
+      .word { font-family: Syne, Impact, sans-serif; font-weight: 800; fill: #f3ead8; }
+      .serif { font-family: "Noto Serif SC", "Songti SC", "Palatino Linotype", serif; fill: #f3ead8; }
+      .mono { font-family: "IBM Plex Mono", Consolas, monospace; }
+    </style>
+    <pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.55" fill="#f3ead8" opacity="0.05"/>
+      <circle cx="4" cy="3.5" r="0.4" fill="#000" opacity="0.2"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="1240" fill="#16120e"/>
+  <rect width="1600" height="1240" fill="url(#grain)"/>
+  <rect x="28" y="28" width="1544" height="1184" fill="none" stroke="#3a3228"/>
+  <rect x="36" y="36" width="1528" height="1168" fill="none" stroke="#e08a3c" stroke-width="0.6" opacity="0.45"/>
+
+  <text class="mono" x="64" y="78" font-size="12" fill="#8d8173">ALUKA  ·  DOCS/ROADMAP  ·  02</text>
+  <text class="word" x="64" y="128" font-size="52">CODE ROADMAP</text>
+  <text class="serif" x="64" y="162" font-size="20">按文件推进  ·  先兼容插件，再补齐运行时深度</text>
+
+  <g transform="translate(1140,58)">
+    <rect width="396" height="108" rx="2" fill="#211c16" stroke="#8fbfa8" stroke-width="1.2"/>
+    <text class="mono" x="18" y="28" font-size="11" fill="#8fbfa8">NORTH STAR</text>
+    <text class="serif" x="18" y="56" font-size="15" fill="#f3ead8">现有 pi 插件可加载、可拦截、可注册工具</text>
+    <text class="mono" x="18" y="82" font-size="11" fill="#8d8173">TUI parity is later, not now</text>
+  </g>
+
+  <g transform="translate(64,214)">
+    <rect width="480" height="760" rx="4" fill="#211c16" stroke="#8fbfa8"/>
+    <rect width="480" height="56" rx="4" fill="#1a2a22"/>
+    <rect y="40" width="480" height="16" fill="#1a2a22"/>
+    <text class="mono" x="24" y="36" font-size="13" fill="#8fbfa8">NOW  ·  SHIPPED  ·  v0.1</text>
+    <text class="serif" x="24" y="92" font-size="20" fill="#f3ead8">可运行的兼容内核</text>
+    <text class="mono" x="24" y="118" font-size="12" fill="#8d8173">tests 6/6  ·  layers in place</text>
+    <g class="mono" font-size="12">
+      <g transform="translate(24,146)"><text fill="#8fbfa8" y="0">骨架</text><text fill="#c9b89a" y="22">src/cli.ts          src/main.ts</text><text fill="#c9b89a" y="42">src/index.ts        src/config.ts</text></g>
+      <g transform="translate(24,214)"><text fill="#8fbfa8" y="0">AI + Loop</text><text fill="#c9b89a" y="22">src/ai/openai.ts    anthropic.ts</text><text fill="#c9b89a" y="42">src/ai/stream.ts    schema.ts</text><text fill="#c9b89a" y="62">src/agent/loop.ts   types.ts</text></g>
+      <g transform="translate(24,302)"><text fill="#8fbfa8" y="0">插件系统</text><text fill="#c9b89a" y="22">extensions/loader.ts   jiti + alias</text><text fill="#c9b89a" y="42">extensions/runner.ts   emit / wrapTool</text><text fill="#c9b89a" y="62">extensions/types.ts    ExtensionAPI</text></g>
+      <g transform="translate(24,390)"><text fill="#8fbfa8" y="0">内置工具 + 会话</text><text fill="#c9b89a" y="22">tools/{files,bash,search}.ts</text><text fill="#c9b89a" y="42">session/manager.ts     JSONL</text><text fill="#c9b89a" y="62">skills/index.ts        SKILL.md</text></g>
+      <g transform="translate(24,478)"><text fill="#8fbfa8" y="0">验证</text><text fill="#c9b89a" y="22">tests/extensions.test.ts</text><text fill="#c9b89a" y="42">tests/examples.test.ts   greet.ts</text><text fill="#c9b89a" y="62">tests/agent-loop.test.ts</text></g>
+    </g>
+    <rect x="24" y="680" width="432" height="52" fill="#16120e" stroke="#3a3228"/>
+    <text class="serif" x="40" y="712" font-size="15" fill="#8fbfa8">现状：工具 / 命令 / 事件门可跑</text>
+  </g>
+
+  <g transform="translate(560,214)">
+    <rect width="480" height="760" rx="4" fill="#211c16" stroke="#e08a3c"/>
+    <rect width="480" height="56" fill="#2a2118" rx="4"/>
+    <rect y="40" width="480" height="16" fill="#2a2118"/>
+    <text class="mono" x="24" y="36" font-size="13" fill="#e08a3c">NEXT  ·  BUILD</text>
+    <text class="serif" x="24" y="92" font-size="20" fill="#f3ead8">补齐运行时深度</text>
+    <text class="mono" x="24" y="118" font-size="12" fill="#8d8173">让更多真实 pi 插件不再撞 stub</text>
+    <g class="mono" font-size="12">
+      <g transform="translate(24,146)"><text fill="#e08a3c" y="0">1. Provider lifecycle</text><text fill="#c9b89a" y="22">src/models.ts → ModelRegistry</text><text fill="#8d8173" y="42">registerProvider live + OAuth</text></g>
+      <g transform="translate(24,214)"><text fill="#e08a3c" y="0">2. Compaction</text><text fill="#c9b89a" y="22">src/compaction/index.ts  NEW</text><text fill="#8d8173" y="42">session_before_compact</text></g>
+      <g transform="translate(24,282)"><text fill="#e08a3c" y="0">3. Parallel tools</text><text fill="#c9b89a" y="22">src/agent/loop.ts  executionMode</text><text fill="#8d8173" y="42">sequential | parallel batches</text></g>
+      <g transform="translate(24,350)"><text fill="#e08a3c" y="0">4. Session tree</text><text fill="#c9b89a" y="22">session/manager.ts  fork / tree</text><text fill="#8d8173" y="42">newSession · switchSession</text></g>
+      <g transform="translate(24,418)"><text fill="#e08a3c" y="0">5. Interactive mode</text><text fill="#c9b89a" y="22">src/modes/interactive.ts  NEW</text><text fill="#8d8173" y="42">stream render · slash · abort</text></g>
+      <g transform="translate(24,486)"><text fill="#e08a3c" y="0">6. UI primitives</text><text fill="#c9b89a" y="22">extensions/ui.ts  +  tui/</text><text fill="#8d8173" y="42">setWidget / setFooter / editor</text></g>
+      <g transform="translate(24,554)"><text fill="#e08a3c" y="0">7. Trust + settings</text><text fill="#c9b89a" y="22">src/trust.ts  src/settings.ts</text><text fill="#8d8173" y="42">project_trust · enabledModels</text></g>
+    </g>
+    <rect x="24" y="680" width="432" height="52" fill="#16120e" stroke="#3a3228"/>
+    <text class="serif" x="40" y="712" font-size="15" fill="#e08a3c">目标：主流事件处理器不再 no-op</text>
+  </g>
+
+  <g transform="translate(1056,214)">
+    <rect width="480" height="760" rx="4" fill="#211c16" stroke="#3a3228"/>
+    <rect width="480" height="56" fill="#1a1815" rx="4"/>
+    <rect y="40" width="480" height="16" fill="#1a1815"/>
+    <text class="mono" x="24" y="36" font-size="13" fill="#8d8173">LATER  ·  PARITY</text>
+    <text class="serif" x="24" y="92" font-size="20" fill="#f3ead8">接近 pi 的完整 harness</text>
+    <text class="mono" x="24" y="118" font-size="12" fill="#8d8173">只在契约稳定后再做</text>
+    <g class="mono" font-size="12">
+      <g transform="translate(24,146)"><text fill="#c9b89a" y="0">Real pi-tui components</text><text fill="#8d8173" y="22">src/tui/  replace stub</text><text fill="#8d8173" y="42">ctx.ui.custom() works</text></g>
+      <g transform="translate(24,214)"><text fill="#c9b89a" y="0">Package manager</text><text fill="#8d8173" y="22">npm: / git:  pi packages</text></g>
+      <g transform="translate(24,260)"><text fill="#c9b89a" y="0">RPC / JSON modes</text><text fill="#8d8173" y="22">src/modes/{rpc,print,json}.ts</text></g>
+      <g transform="translate(24,306)"><text fill="#c9b89a" y="0">Themes / markdown render</text><text fill="#8d8173" y="22">registerMessageRenderer</text></g>
+      <g transform="translate(24,352)"><text fill="#c9b89a" y="0">Via extensions, not core</text><text fill="#8d8173" y="22">MCP · sub-agent · plan mode</text></g>
+      <g transform="translate(24,420)"><text fill="#c9b89a" y="0">Binary distribution</text><text fill="#8d8173" y="22">bun compile · virtualModules</text></g>
+    </g>
+    <rect x="24" y="680" width="432" height="52" fill="#16120e" stroke="#3a3228"/>
+    <text class="serif" x="40" y="712" font-size="15" fill="#8d8173">原则：核心保持薄，能力外置</text>
+  </g>
+
+  <g transform="translate(64,1000)">
+    <text class="mono" x="0" y="0" font-size="12" fill="#e08a3c">DEPENDENCY ORDER</text>
+    <rect y="16" width="1472" height="88" rx="4" fill="#211c16" stroke="#3a3228"/>
+    <g class="mono" font-size="13">
+      <text fill="#8fbfa8" x="24" y="52">types/schema</text>
+      <text fill="#e08a3c" x="168" y="52">→</text>
+      <text fill="#f3ead8" x="196" y="52">ai stream</text>
+      <text fill="#e08a3c" x="308" y="52">→</text>
+      <text fill="#f3ead8" x="336" y="52">agent loop</text>
+      <text fill="#e08a3c" x="456" y="52">→</text>
+      <text fill="#f3ead8" x="484" y="52">wrapTool + events</text>
+      <text fill="#e08a3c" x="668" y="52">→</text>
+      <text fill="#f3ead8" x="696" y="52">ModelRegistry</text>
+      <text fill="#e08a3c" x="844" y="52">→</text>
+      <text fill="#f3ead8" x="872" y="52">compaction</text>
+      <text fill="#e08a3c" x="996" y="52">→</text>
+      <text fill="#f3ead8" x="1024" y="52">session tree</text>
+      <text fill="#e08a3c" x="1164" y="52">→</text>
+      <text fill="#f3ead8" x="1192" y="52">TUI / packages</text>
+    </g>
+    <text class="mono" x="24" y="84" font-size="11" fill="#8d8173">不要先做 TUI。先让 registerProvider / compact / fork 的事件契约可测。</text>
+  </g>
+
+  <text class="mono" x="64" y="1196" font-size="11" fill="#8d8173">ALUKA  ·  THIN CORE  ·  EXTENSIONS FIRST  ·  SEE docs/architecture.svg</text>
+  <text class="mono" x="1280" y="1196" font-size="11" fill="#e08a3c">v0.1.0 → 0.2</text>
+</svg>

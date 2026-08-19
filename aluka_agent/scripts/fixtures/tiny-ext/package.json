@@ -1,0 +1,10 @@
+{
+  "name": "aluka-fixture-tiny-ext",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "aluka": {
+    "extension": "index.js"
+  }
+}

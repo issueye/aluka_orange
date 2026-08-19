@@ -1,0 +1,57 @@
+{
+  "name": "@aluka/pi",
+  "version": "0.1.0",
+  "description": "TypeScript AI agent with pi-agent compatible extensions",
+  "type": "module",
+  "bin": {
+    "aluka": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./desktop": {
+      "types": "./dist/desktop/index.d.ts",
+      "import": "./dist/desktop/index.js",
+      "default": "./src/desktop/index.ts"
+    },
+    "./compat": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "pi-agent",
+    "extensions",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "jiti": "^2.6.1",
+    "typebox": "^1.0.33"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
