@@ -109,16 +109,21 @@ export {
   previewModelsJson,
   readModelsJsonConfig,
   upsertCustomProviderInModelsJson,
+  addModelsToProviderInModelsJson,
   removeCustomProviderFromModelsJson,
   removeCustomModelFromModelsJson,
   setProviderApiKeyInModelsJson,
   clearProviderApiKeyInModelsJson,
   listModelOptions,
   lookupProviderModel,
+  fetchOpenAiModelList,
+  parseOpenAiModelsList,
   type ModelsJsonPreview,
   type ModelsJsonConfigView,
   type ModelOptionView,
   type UpsertCustomProviderInput,
+  type AddProviderModelsInput,
+  type RemoteModelView,
 } from "./models-json.ts";
 
 // 自定义编辑器组件

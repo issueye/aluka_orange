@@ -6,8 +6,13 @@ export {
   type DesktopRuntimeEvent,
   type ExtensionInventory,
   type ExtensionListItem,
+  type OpenedSession,
+  type SelectWorkspaceMode,
+  type SessionHandle,
   type SkillListItem,
   type TimelineItem,
+  type WorkspaceSessionView,
+  type WorkspaceView,
 } from "./runtime.ts";
 export {
   loadSettings,
@@ -32,8 +37,13 @@ export {
   removeCustomModelFromModelsJson,
   setProviderApiKeyInModelsJson,
   clearProviderApiKeyInModelsJson,
+  addModelsToProviderInModelsJson,
   listModelOptions,
   ensureModelsJsonTemplate,
+  fetchOpenAiModelList,
+  fetchProviderRemoteModels,
+  parseOpenAiModelsList,
+  modelsListUrl,
   type ModelsJsonModelView,
   type ModelsJsonPreview,
   type ModelsJsonProviderView,
@@ -41,6 +51,8 @@ export {
   type ModelsJsonConfigView,
   type ModelOptionView,
   type UpsertCustomProviderInput,
+  type AddProviderModelsInput,
+  type RemoteModelView,
 } from "./models-json.ts";
 export {
   installNpmPackageToAgent,
@@ -69,3 +81,14 @@ export {
   type SessionUsageTotals,
   type SessionUsageView,
 } from "./session-usage.ts";
+export {
+  TEMP_WORKSPACE_PREFIX,
+  createTemporaryWorkspace,
+  ensureWorkspaceDir,
+  forgetWorkspace,
+  isTemporaryWorkspace,
+  normalizeWorkspaceList,
+  rememberWorkspace,
+  samePath,
+  workspaceDisplayName,
+} from "./workspaces.ts";

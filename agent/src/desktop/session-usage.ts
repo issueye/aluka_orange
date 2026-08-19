@@ -3,7 +3,8 @@
  * 不是 Zeno 式「账户配额」；OAuth / 实时 Provider usage 不在此范围。
  */
 
-import type { AgentMessage, Usage } from "../ai/types.ts";
+import type { Usage } from "../ai/types.ts";
+import type { AgentMessage } from "../agent/types.ts";
 import type { SessionEntry } from "../session/manager.ts";
 
 export interface SessionUsageTotals {

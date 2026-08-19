@@ -10,7 +10,13 @@
  */
 
 /** API 协议类型 */
-export type Api = "openai-completions" | "anthropic-messages";
+export type Api = "openai-completions" | "openai-responses" | "anthropic-messages";
+
+/** 将未知配置值规范为受支持的 API 协议 */
+export function coerceApi(raw: unknown): Api {
+  if (raw === "anthropic-messages" || raw === "openai-responses") return raw;
+  return "openai-completions";
+}
 
 /** 思考深度等级（控制模型的推理深度） */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high";
@@ -92,6 +98,8 @@ export interface Model {
   api: Api;
   /** 自定义 API 基础 URL */
   baseUrl?: string;
+  /** 该供应商的 HTTP/SOCKS 代理，如 http://127.0.0.1:7890 */
+  proxy?: string;
   /** 是否支持推理/思考模式 */
   reasoning: boolean;
   /** 支持的输入类型 */

@@ -6,8 +6,10 @@
  */
 import { app, createWindow, createTray, setAssetDir, globalShortcut } from "aluka:gui";
 import { createDesktopHost, type DesktopHost } from "../host/index.ts";
+import { pickFolder } from "../host/choose-folder.ts";
 import { PROTOCOL_VERSION } from "../shared/contracts.ts";
-import { VERSION } from "../../../../../aluka_pi/src/config.ts";
+import { VERSION } from "../../../../../agent/src/config.ts";
+import { coerceApi } from "../../../../../agent/src/ai/types.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, "../..");
 const uiDir = path.resolve(appRoot, "dist/ui");
 const iconPath = path.resolve(appRoot, "assets/icon.ico");
-const alukaPiRoot = path.resolve(appRoot, "../../../aluka_pi");
+const alukaPiRoot = path.resolve(appRoot, "../../../agent");
 const demoExts = [
   path.join(alukaPiRoot, "examples", "extensions", "greet.ts"),
   path.join(alukaPiRoot, "examples", "extensions", "guard.ts"),
@@ -103,13 +105,46 @@ app.registerRPC("getSettings", () => requireHost().getSettings());
 app.registerRPC("patchSettings", (params: SettingsPatch) => requireHost().patchSettings(params ?? {}));
 app.registerRPC("listProviderPresets", () => requireHost().listProviderPresets());
 app.registerRPC("listSessions", () => requireHost().listSessions());
-app.registerRPC("createSession", () => requireHost().createSession());
-app.registerRPC("openSession", (params: { id?: string }) => {
+app.registerRPC("listWorkspaces", () => requireHost().listWorkspaces());
+app.registerRPC("selectWorkspace", (params: { path?: string; mode?: "latest" | "new" }) => {
+  if (!params?.path?.trim()) throw new Error("selectWorkspace requires path");
+  const mode = params.mode === "new" ? "new" : "latest";
+  return requireHost().selectWorkspace(params.path.trim(), mode);
+});
+app.registerRPC("addWorkspace", (params: { path?: string; mode?: "latest" | "new" }) => {
+  if (!params?.path?.trim()) throw new Error("addWorkspace requires path");
+  const mode = params.mode === "new" ? "new" : "latest";
+  return requireHost().addWorkspace(params.path.trim(), mode);
+});
+app.registerRPC("createTempWorkspace", (params?: { mode?: "latest" | "new" }) => {
+  const mode = params?.mode === "latest" ? "latest" : "new";
+  return requireHost().createTempWorkspace(mode);
+});
+app.registerRPC("removeWorkspace", (params: { path?: string }) => {
+  if (!params?.path?.trim()) throw new Error("removeWorkspace requires path");
+  return requireHost().removeWorkspace(params.path.trim());
+});
+app.registerRPC("chooseWorkspace", (params?: { mode?: "latest" | "new" }) => {
+  const selected = pickFolder();
+  if (!selected) return { cancelled: true as const };
+  const mode = params?.mode === "new" ? "new" : "latest";
+  const opened = requireHost().addWorkspace(selected, mode);
+  return { cancelled: false as const, ...opened };
+});
+app.registerRPC("createSession", (params?: { cwd?: string }) => requireHost().createSession(params?.cwd));
+app.registerRPC("openSession", (params: { id?: string; cwd?: string }) => {
   if (!params?.id) throw new Error("openSession requires id");
-  return requireHost().openSession(params.id);
+  return requireHost().openSession(params.id, params.cwd);
+});
+app.registerRPC("deleteSession", (params: { id?: string; cwd?: string }) => {
+  if (!params?.id) throw new Error("deleteSession requires id");
+  return requireHost().deleteSession(params.id, params.cwd);
 });
 app.registerRPC("getTimeline", () => requireHost().getTimeline());
-app.registerRPC("getActiveSessionId", () => ({ id: requireHost().getActiveSessionId() }));
+app.registerRPC("getActiveSessionId", () => ({
+  id: requireHost().getActiveSessionId(),
+  cwd: requireHost().getSettings().cwd,
+}));
 app.registerRPC("isBusy", () => ({ busy: requireHost().isBusy() }));
 app.registerRPC("listExtensions", () => requireHost().listExtensions());
 app.registerRPC("listSkills", () => requireHost().listSkills());
@@ -127,9 +162,17 @@ app.registerRPC("respondExtensionUi", (params: Parameters<DesktopHost["respondEx
 );
 app.registerRPC("sendPrompt", (params: { text?: string }) => {
   const text = String(params?.text ?? "");
-  void requireHost().sendPrompt(text).then((result) => {
-    win.emit("prompt.result", result);
-  });
+  void requireHost()
+    .sendPrompt(text)
+    .then((result) => {
+      win.emit("prompt.result", result);
+    })
+    .catch((err) => {
+      win.emit("prompt.result", {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   return { started: true };
 });
 app.registerRPC("abortPrompt", () => requireHost().abortPrompt());
@@ -185,10 +228,11 @@ app.registerRPC("upsertCustomProvider", (params: {
   contextWindow?: number;
   maxTokens?: number;
   apiKey?: string;
+  proxy?: string;
   previousProvider?: string;
   previousModelId?: string;
 }) => {
-  const api = params?.api === "anthropic-messages" ? "anthropic-messages" : "openai-completions";
+  const api = coerceApi(params?.api);
   return requireHost().upsertCustomProvider({
     provider: String(params?.provider ?? ""),
     baseUrl: String(params?.baseUrl ?? ""),
@@ -199,6 +243,7 @@ app.registerRPC("upsertCustomProvider", (params: {
     contextWindow: params?.contextWindow,
     maxTokens: params?.maxTokens,
     apiKey: params?.apiKey,
+    proxy: params?.proxy,
     previousProvider: params?.previousProvider,
     previousModelId: params?.previousModelId,
   });
@@ -207,6 +252,21 @@ app.registerRPC("removeCustomProvider", (params: { provider?: string }) => {
   if (!params?.provider?.trim()) throw new Error("removeCustomProvider requires provider");
   return requireHost().removeCustomProvider(params.provider.trim());
 });
+app.registerRPC("addProviderModels", (params: { provider?: string; models?: Array<{ id?: string; name?: string }> }) => {
+  if (!params?.provider?.trim()) throw new Error("addProviderModels requires provider");
+  const models = (params.models ?? [])
+    .map((item) => ({ id: String(item?.id ?? "").trim(), name: item?.name }))
+    .filter((item) => item.id);
+  return requireHost().addProviderModels({ provider: params.provider.trim(), models });
+});
+app.registerRPC("fetchRemoteModels", (params: { provider?: string; baseUrl?: string; apiKey?: string; proxy?: string }) =>
+  requireHost().fetchRemoteModels({
+    provider: params?.provider,
+    baseUrl: params?.baseUrl,
+    apiKey: params?.apiKey,
+    proxy: params?.proxy,
+  }),
+);
 app.registerRPC("removeCustomModel", (params: { provider?: string; modelId?: string }) => {
   if (!params?.provider?.trim() || !params?.modelId?.trim()) {
     throw new Error("removeCustomModel requires provider and modelId");

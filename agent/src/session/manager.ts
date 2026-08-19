@@ -120,6 +120,30 @@ export class SessionManager {
     return new SessionManager(full);
   }
 
+  /**
+   * 删除会话文件。只允许删 sessions 目录内的 .jsonl。
+   * @returns 是否确实删掉了文件
+   */
+  static remove(dir: string, idOrPath: string): boolean {
+    const full = path.isAbsolute(idOrPath)
+      ? idOrPath
+      : path.join(dir, idOrPath.endsWith(".jsonl") ? idOrPath : `${idOrPath}.jsonl`);
+    const resolved = path.resolve(full);
+    const root = path.resolve(dir);
+    const rootNorm = root.replace(/\\/g, "/").toLowerCase();
+    const fileNorm = resolved.replace(/\\/g, "/").toLowerCase();
+    const prefix = rootNorm.endsWith("/") ? rootNorm : `${rootNorm}/`;
+    if (fileNorm !== rootNorm && !fileNorm.startsWith(prefix)) {
+      throw new Error("session path escapes sessions directory");
+    }
+    if (!fileNorm.endsWith(".jsonl")) {
+      throw new Error("not a session file");
+    }
+    if (!fs.existsSync(resolved)) return false;
+    fs.unlinkSync(resolved);
+    return true;
+  }
+
   /** 会话 id（文件名去扩展名） */
   get id(): string {
     return path.basename(this.file, ".jsonl");

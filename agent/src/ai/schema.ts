@@ -9,24 +9,84 @@ import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 /**
- * 将 TypeBox Schema 转换为 JSON Schema
+ * Console Go / DeepSeek 工具 schema 白名单。
+ * `minimum` / `anyOf` / `additionalProperties` 等都会触发 unsupported_keyword。
+ */
+const TOOL_SCHEMA_KEYS = new Set([
+  "type",
+  "properties",
+  "required",
+  "description",
+  "items",
+  "enum",
+]);
+
+const EMPTY_OBJECT_SCHEMA: Record<string, unknown> = { type: "object", properties: {} };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * 将 TypeBox Schema 转换为工具调用可用的 JSON Schema。
  *
- * TypeBox 生成的 Schema 包含 $id 和 $schema 等字段，
- * 而 LLM API 需要的是标准 JSON Schema 格式。
- * 此函数会自动去除这些额外字段。
- *
- * @returns 标准 JSON Schema 对象；若输入不是合法 Schema 则返回通用 object schema
+ * 会去掉 TypeBox 元数据（$id / $schema / ~kind）以及网关不支持的关键字
+ *（additionalProperties、minimum、anyOf 等）。
  */
 export function typeboxToJsonSchema(schema: unknown): Record<string, unknown> {
-  if (schema && typeof schema === "object") {
-    const record = schema as Record<string, unknown>;
-    if (record.type || record.properties || record.$schema) {
-      const { $id: _id, $schema: _schema, ...rest } = record;
-      return rest as Record<string, unknown>;
+  const sanitized = sanitizeToolJsonSchema(schema);
+  if (isRecord(sanitized) && (sanitized.type || sanitized.properties)) return sanitized;
+  return { ...EMPTY_OBJECT_SCHEMA };
+}
+
+/** 把 anyOf/oneOf/allOf 收成单一 schema，优先保留 object 分支 */
+function flattenComposition(src: Record<string, unknown>): unknown | undefined {
+  const union = src.anyOf ?? src.oneOf ?? src.allOf;
+  if (!Array.isArray(union) || union.length === 0) return undefined;
+  const branches = union.map(sanitizeToolJsonSchema).filter(isRecord);
+  if (branches.length === 0) return undefined;
+  const objectBranch = branches.find((branch) => branch.type === "object" || branch.properties);
+  const picked: Record<string, unknown> = { ...(objectBranch ?? branches[0]) };
+  if (typeof src.description === "string") picked.description = src.description;
+  if (typeof src.type === "string") picked.type = src.type;
+  return sanitizeToolJsonSchema(picked);
+}
+
+/** 递归清洗工具 JSON Schema，只保留白名单关键字 */
+export function sanitizeToolJsonSchema(input: unknown): unknown {
+  if (Array.isArray(input)) return input.map((item) => sanitizeToolJsonSchema(item));
+  if (!isRecord(input)) return input;
+
+  const flattened = flattenComposition(input);
+  if (flattened !== undefined) return flattened;
+
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(input)) {
+    if (!TOOL_SCHEMA_KEYS.has(key)) continue;
+    const value = input[key];
+    if (key === "properties" && isRecord(value)) {
+      const properties: Record<string, unknown> = {};
+      for (const [name, nested] of Object.entries(value)) {
+        properties[name] = sanitizeToolJsonSchema(nested);
+      }
+      out.properties = properties;
+      continue;
     }
+    if (key === "required" && Array.isArray(value)) {
+      out.required = value.filter((item) => typeof item === "string");
+      continue;
+    }
+    if (key === "enum" || key === "type") {
+      out[key] = value;
+      continue;
+    }
+    if (key === "items" && Array.isArray(value)) {
+      out.items = value.length ? sanitizeToolJsonSchema(value[0]) : {};
+      continue;
+    }
+    out[key] = sanitizeToolJsonSchema(value);
   }
-  // 回退：返回允许任意属性的空对象 schema
-  return { type: "object", properties: {}, additionalProperties: true };
+  return out;
 }
 
 /**

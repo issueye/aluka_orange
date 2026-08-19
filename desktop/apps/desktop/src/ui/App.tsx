@@ -7,10 +7,15 @@ import {
   Boxes,
   Share2,
   Download,
+  Folder,
+  FolderPlus,
+  PanelLeft,
   SquarePen,
 } from "lucide-react";
 import { bridge, rpc } from "./bridge.ts";
 import { ProvidersPanel } from "./ProvidersPanel.tsx";
+import { WorkspaceSidebar, type WorkspaceItem } from "./WorkspaceSidebar.tsx";
+import { ToolCard } from "./ToolCard.tsx";
 import { Button, Input, Markdown, SectionHead, Select, Switch, Textarea } from "./components/index.ts";
 import "./components/ui.css";
 import "./styles.css";
@@ -32,10 +37,30 @@ type TimelineItem = {
   /** 工具调用时的工具名（仅 tool 类型） */
   toolName?: string;
   timestamp: number;
+  toolCallId?: string;
+  args?: unknown;
+  resultText?: string;
+  isError?: boolean;
+  toolStatus?: "running" | "done" | "error";
 };
 
 /** 会话摘要：用于侧边栏列表显示 */
 type SessionSummary = { id: string; title: string; mtime: number };
+
+type OpenedSession = {
+  id: string;
+  cwd: string;
+  timeline?: TimelineItem[];
+};
+
+type ChooseWorkspaceResult =
+  | { cancelled: true }
+  | ({ cancelled: false } & OpenedSession);
+
+function pathsEqual(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
+}
 
 /** 设置视图：当前用户配置 */
 type SettingsView = {
@@ -47,6 +72,7 @@ type SettingsView = {
   hasApiKey?: boolean;
   extraExtensions?: string[];
   providerPreset?: string;
+  workspaces?: string[];
 };
 
 /** 模型选项：供模型选择器下拉列表使用 */
@@ -149,7 +175,11 @@ export function App() {
   const [idleStatus, setIdleStatus] = useState("就绪");      // 空闲时的状态文本
   const [view, setView] = useState<ShellView>("chat");       // 当前视图：对话/设置/扩展
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("workspace"); // 设置页子分区
-  const [sessions, setSessions] = useState<SessionSummary[]>([]); // 会话列表
+  const [sessions, setSessions] = useState<SessionSummary[]>([]); // 当前工作区会话（标题回退）
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
+  const [wsPathOpen, setWsPathOpen] = useState(false);
+  const [wsPathDraft, setWsPathDraft] = useState("");
+  const [wsPickMode, setWsPickMode] = useState<"latest" | "new">("latest");
   const [activeId, setActiveId] = useState<string | undefined>(); // 当前活跃会话 ID
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);   // 当前会话时间线
   const [busy, setBusy] = useState(false);                        // 是否正在处理请求
@@ -173,11 +203,18 @@ export function App() {
   );
   const [about, setAbout] = useState("");                       // 关于信息
   const [toasts, setToasts] = useState<Toast[]>([]);            // Toast 通知列表
-  const [modal, setModal] = useState<ExtensionUiRequest | undefined(); // 扩展 UI 弹窗请求
+  const [modal, setModal] = useState<ExtensionUiRequest | undefined>(); // 扩展 UI 弹窗请求
   const [selectChoice, setSelectChoice] = useState<string | undefined>(); // 弹窗选择结果
   const [modalInput, setModalInput] = useState("");             // 弹窗输入内容
   const toastSeq = useRef(0);                                    // Toast 序列号
   const timelineRef = useRef<HTMLDivElement>(null);              // 时间线容器引用（用于自动滚动）
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("aluka.sidebarCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   // 当前主题（默认深色）
   const theme = settings.theme === "light" ? "light" : "dark";
@@ -189,10 +226,14 @@ export function App() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
   }, []);
 
-/** 刷新会话列表 */
+/** 刷新会话列表与工作区树 */
   const refreshSessions = useCallback(async () => {
-    const list = (await rpc<SessionSummary[]>("listSessions")) ?? [];
-    setSessions(list);
+    const [list, tree] = await Promise.all([
+      rpc<SessionSummary[]>("listSessions"),
+      rpc<WorkspaceItem[]>("listWorkspaces"),
+    ]);
+    setSessions(list ?? []);
+    setWorkspaces(tree ?? []);
   }, []);
 
   /** 刷新当前会话的 token 用量统计 */
@@ -254,20 +295,105 @@ export function App() {
     setModelsPreview(blocks.join("\n") || "未找到 models.json");
   }, []);
 
-/**
+  /**
    * 打开指定会话：加载时间线、切换到对话视图、刷新列表和用量
    */
-  const openSession = useCallback(
-    async (id: string) => {
-      const opened = await rpc<{ id: string; timeline: TimelineItem[] }>("openSession", { id });
+  const applyOpened = useCallback(
+    async (opened: OpenedSession) => {
       setActiveId(opened.id);
       setTimeline(opened.timeline ?? []);
       setStreaming("");
       setView("chat");
+      setSettings((s) => ({ ...s, cwd: opened.cwd }));
       await refreshSessions();
       await refreshUsage(opened.id);
     },
     [refreshSessions, refreshUsage],
+  );
+
+  const openSession = useCallback(
+    async (id: string, cwd?: string) => {
+      const opened = await rpc<OpenedSession>("openSession", { id, cwd });
+      await applyOpened(opened);
+    },
+    [applyOpened],
+  );
+
+  const createNewChat = useCallback(async () => {
+    const created = await rpc<OpenedSession>("createSession", { cwd: settings.cwd });
+    await applyOpened({ ...created, timeline: [] });
+  }, [applyOpened, settings.cwd]);
+
+  const selectWorkspace = useCallback(
+    async (dir: string, mode: "latest" | "new" = "latest") => {
+      const opened = await rpc<OpenedSession>("selectWorkspace", { path: dir, mode });
+      await applyOpened(opened);
+    },
+    [applyOpened],
+  );
+
+  const deleteSession = useCallback(
+    async (id: string, cwd: string) => {
+      try {
+        const opened = await rpc<OpenedSession>("deleteSession", { id, cwd });
+        if (id === activeId && pathsEqual(cwd, settings.cwd ?? "")) {
+          await applyOpened(opened);
+        } else {
+          await refreshSessions();
+        }
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    },
+    [activeId, applyOpened, refreshSessions, settings.cwd, toast],
+  );
+
+  const toggleSidebar = useCallback((next?: boolean) => {
+    setSidebarCollapsed((prev) => {
+      const collapsed = next ?? !prev;
+      try {
+        localStorage.setItem("aluka.sidebarCollapsed", collapsed ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return collapsed;
+    });
+  }, []);
+
+  const createTempWorkspace = useCallback(async () => {
+    const opened = await rpc<OpenedSession>("createTempWorkspace", { mode: "new" });
+    await applyOpened(opened);
+    toast("已使用临时工作区", "info");
+  }, [applyOpened, toast]);
+
+  const addWorkspaceByPath = useCallback(
+    async (dir: string, mode: "latest" | "new" = "latest") => {
+      const opened = await rpc<OpenedSession>("addWorkspace", { path: dir, mode });
+      await applyOpened(opened);
+    },
+    [applyOpened],
+  );
+
+  const chooseWorkspace = useCallback(
+    async (mode: "latest" | "new" = "latest") => {
+      try {
+        const result = await rpc<ChooseWorkspaceResult>("chooseWorkspace", { mode });
+        if (result?.cancelled) return;
+        if (!result) {
+          setWsPickMode(mode);
+          setWsPathDraft(settings.cwd ?? "");
+          setWsPathOpen(true);
+          return;
+        }
+        await applyOpened(result);
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+        setWsPickMode(mode);
+        setWsPathDraft(settings.cwd ?? "");
+        setWsPathOpen(true);
+      }
+    },
+    [applyOpened, settings.cwd, toast],
   );
 
   /**
@@ -283,8 +409,9 @@ export function App() {
         setIdleStatus(idle);
         setStatus(idle);
         setAbout(`Aluka Desktop ${info.productVersion} · 阶段 ${info.phase}`);
-        const active = await rpc<{ id?: string }>("getActiveSessionId");
+        const active = await rpc<{ id?: string; cwd?: string }>("getActiveSessionId");
         setActiveId(active?.id);
+        if (active?.cwd) setSettings((s) => ({ ...s, cwd: active.cwd }));
         if (active?.id) {
           const items = await rpc<TimelineItem[]>("getTimeline");
           setTimeline(items ?? []);
@@ -316,6 +443,7 @@ export function App() {
         text?: string;
         role?: string;
         toolName?: string;
+        toolCallId?: string;
         args?: unknown;
         resultText?: string;
         isError?: boolean;
@@ -348,6 +476,7 @@ export function App() {
       }
       if (event.type === "message_end" && event.role === "assistant" && event.text != null) {
         setStreaming("");
+        if (!event.text.trim()) return;
         setTimeline((prev) => [
           ...prev,
           { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "assistant", text: event.text!, timestamp: Date.now() },
@@ -355,29 +484,51 @@ export function App() {
         return;
       }
       if (event.type === "tool_start") {
+        const toolCallId = event.toolCallId;
         setTimeline((prev) => [
           ...prev,
           {
-            id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            id: toolCallId || `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             role: "tool",
-            text: JSON.stringify(event.args, null, 2),
+            text: "",
             toolName: event.toolName,
             timestamp: Date.now(),
+            toolCallId,
+            args: event.args,
+            toolStatus: "running",
           },
         ]);
         return;
       }
       if (event.type === "tool_end") {
-        setTimeline((prev) => [
-          ...prev,
-          {
-            id: `tr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            role: "tool",
-            text: event.isError ? `error: ${event.resultText}` : String(event.resultText ?? ""),
-            toolName: `${event.toolName} · 结果`,
-            timestamp: Date.now(),
-          },
-        ]);
+        const toolCallId = event.toolCallId;
+        const resultText = String(event.resultText ?? "");
+        setTimeline((prev) => {
+          const index = toolCallId ? prev.findIndex((item) => item.toolCallId === toolCallId) : -1;
+          const patch: Partial<TimelineItem> = {
+            text: resultText,
+            resultText,
+            isError: event.isError,
+            toolStatus: event.isError ? "error" : "done",
+            toolName: event.toolName,
+          };
+          if (index >= 0) {
+            const next = [...prev];
+            next[index] = { ...next[index], ...patch };
+            return next;
+          }
+          return [
+            ...prev,
+            {
+              id: toolCallId || `tr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              role: "tool",
+              timestamp: Date.now(),
+              toolCallId,
+              ...patch,
+              text: resultText,
+            },
+          ];
+        });
         return;
       }
       if (event.type === "extension_ui" && event.request) {
@@ -484,9 +635,21 @@ export function App() {
   }, [timeline, streaming]);
 
   const activeTitle = useMemo(() => {
+    for (const ws of workspaces) {
+      if (settings.cwd && !pathsEqual(ws.path, settings.cwd)) continue;
+      const s = ws.sessions.find((x) => x.id === activeId);
+      if (s) return s.title || s.id;
+    }
     const s = sessions.find((x) => x.id === activeId);
     return s?.title || s?.id || "新对话";
-  }, [sessions, activeId]);
+  }, [workspaces, sessions, activeId, settings.cwd]);
+
+  const activeWorkspace = useMemo(
+    () => workspaces.find((ws) => pathsEqual(ws.path, settings.cwd)),
+    [workspaces, settings.cwd],
+  );
+
+  const isEmptyChat = view === "chat" && timeline.length === 0 && !streaming;
 
   async function respondUi(
     response:
@@ -523,82 +686,51 @@ export function App() {
     if (apiKeyDraft.trim()) patch.apiKey = apiKeyDraft.trim();
     await rpc("patchSettings", patch);
     await loadSettings();
+    await refreshSessions();
     await refreshExtensions();
     toast("设置已保存", "info");
   }
 
   return (
-    <div className={`app-shell ${view !== "chat" ? "settings-open" : ""}`} data-theme={theme}>
-      <aside className="sidebar" data-aluka-drag="no-drag">
-        <div className="sidebar-brand" data-aluka-drag>
-          <div className="logo" />
-          <div className="name">Aluka</div>
-          <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="新建会话" onClick={(e) => {
-            e.stopPropagation();
-            void (async () => {
-            const created = await rpc<{ id: string }>("createSession");
-            setActiveId(created.id);
-            setTimeline([]);
-            setStreaming("");
-            setView("chat");
-            await refreshSessions();
-            await refreshUsage(created.id);
-          })();
-          }}>
-            <SquarePen size={16} />
-          </button>
-        </div>
-
-        <div className="sidebar-actions">
-          <button type="button" onClick={() => void (async () => {
-            const result = await rpc<{ ok?: boolean; error?: string; path?: string; format?: string; bytes?: number }>(
-              "exportSession",
-              { format: "markdown", id: activeId },
-            );
-            if (result?.ok && result.path) {
-              toast(`已导出 ${result.format}（${result.bytes ?? 0} 字节）`, "info");
-              setStatus(`已导出 → ${result.path}`);
-              setTimeout(() => setStatus(idleStatus), 2500);
-            } else toast(result?.error ?? "导出失败", "error");
-          })()}>
-            <Download size={14} /> 导出
-          </button>
-          <button type="button" onClick={() => {
-            setStatus("正在通过 gh gist 分享…");
-            void rpc("shareSession", { id: activeId }).catch((err) => {
-              toast(err instanceof Error ? err.message : String(err), "error");
-              setStatus(idleStatus);
-            });
-          }}>
-            <Share2 size={14} /> 分享
-          </button>
-        </div>
-
-        <div className="sidebar-section-label">会话</div>
-        <ul className="session-list">
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <button type="button" className={s.id === activeId ? "active" : ""} onClick={() => void openSession(s.id)}>
-                <span>{s.title || s.id}</span>
-                <span className="sub">{new Date(s.mtime).toLocaleString()}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={theme}>
+      <aside className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`} data-aluka-drag="no-drag">
+        {sidebarCollapsed ? (
+          <div className="sidebar-rail" data-aluka-drag>
+            <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="展开侧栏" onClick={() => toggleSidebar(false)}>
+              <PanelLeft size={16} />
+            </button>
+            <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="新建会话" onClick={() => void createNewChat()}>
+              <SquarePen size={16} />
+            </button>
+          </div>
+        ) : (
+          <WorkspaceSidebar
+            workspaces={workspaces}
+            activeCwd={settings.cwd}
+            activeSessionId={activeId}
+            onNewChat={() => void createNewChat()}
+            onOpenSession={(id, cwd) => void openSession(id, cwd)}
+            onSelectWorkspace={(cwd) => void selectWorkspace(cwd, "latest")}
+            onAddWorkspace={() => void chooseWorkspace("latest")}
+            onCreateTemp={() => void createTempWorkspace()}
+            onDeleteSession={(id, cwd) => void deleteSession(id, cwd)}
+            onCollapseSidebar={() => toggleSidebar(true)}
+          />
+        )}
 
         <div className="sidebar-foot">
           <button type="button" className={`nav ghost-btn ${view === "extensions" ? "active" : ""}`} onClick={() => {
             setView("extensions");
             void refreshExtensions();
           }}>
-            <Boxes size={16} /> 扩展
+            <Boxes size={16} /> <span>扩展</span>
           </button>
           <button type="button" className={`nav ghost-btn ${view === "settings" ? "active" : ""}`} onClick={() => {
             setView("settings");
             void loadSettings();
             void refreshUsage(activeId);
           }}>
-            <SettingsIcon size={16} /> 设置
+            <SettingsIcon size={16} /> <span>设置</span>
           </button>
           <div className="status-pill" title={status}>{status}</div>
         </div>
@@ -606,9 +738,40 @@ export function App() {
 
       <section className="main-col">
         <header className="thread-header" data-aluka-drag>
+          {sidebarCollapsed ? (
+            <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="展开侧栏" onClick={() => toggleSidebar(false)}>
+              <PanelLeft size={16} />
+            </button>
+          ) : null}
           <div className="title" data-aluka-drag="no-drag">
             {view === "chat" ? activeTitle : view === "settings" ? "设置" : "扩展与技能"}
           </div>
+          {view === "chat" ? (
+            <div className="thread-actions" data-aluka-drag="no-drag">
+              <button type="button" className="icon-btn" title="导出" onClick={() => void (async () => {
+                const result = await rpc<{ ok?: boolean; error?: string; path?: string; format?: string; bytes?: number }>(
+                  "exportSession",
+                  { format: "markdown", id: activeId },
+                );
+                if (result?.ok && result.path) {
+                  toast(`已导出 ${result.format}（${result.bytes ?? 0} 字节）`, "info");
+                  setStatus(`已导出 → ${result.path}`);
+                  setTimeout(() => setStatus(idleStatus), 2500);
+                } else toast(result?.error ?? "导出失败", "error");
+              })()}>
+                <Download size={14} />
+              </button>
+              <button type="button" className="icon-btn" title="分享" onClick={() => {
+                setStatus("正在通过 gh gist 分享…");
+                void rpc("shareSession", { id: activeId }).catch((err) => {
+                  toast(err instanceof Error ? err.message : String(err), "error");
+                  setStatus(idleStatus);
+                });
+              }}>
+                <Share2 size={14} />
+              </button>
+            </div>
+          ) : null}
           <div className="window-controls" data-aluka-drag="no-drag">
             <button type="button" title="最小化" onClick={() => bridge().window.minimize()}><Minus size={14} /></button>
             <button type="button" title="最大化" onClick={() => bridge().window.toggleMaximize()}><Square size={12} /></button>
@@ -621,15 +784,73 @@ export function App() {
         {view === "chat" && (
           <>
             <div className="timeline" ref={timelineRef}>
-              {timeline.map((item) => (
-                <div key={item.id} className={`bubble ${item.role === "system" ? "error" : item.role}`}>
-                  <div className="role">{roleLabel(item.role, item.toolName)}</div>
-                  {item.role === "assistant" ? (
-                    <Markdown>{item.text}</Markdown>
-                  ) : (
-                    <div className="bubble-text">{item.text}</div>
-                  )}
+              {isEmptyChat ? (
+                <div className="chat-empty">
+                  <div className="chat-empty-kicker">开始对话</div>
+                  <h2>选择一个工作区</h2>
+                  <p>Agent 会在该目录下读写文件、加载技能与扩展。未选择时将使用自动生成的临时目录。</p>
+                  <div className="chat-empty-current">
+                    <Folder size={16} />
+                    <div>
+                      <div className="chat-empty-name">
+                        {activeWorkspace?.name || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "临时工作区")}
+                      </div>
+                      <div className="chat-empty-path">
+                        {settings.cwd || "尚未选择，发送消息时会创建临时目录"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="chat-empty-actions">
+                    <Button onClick={() => void chooseWorkspace("new")}>
+                      <FolderPlus size={14} /> 打开文件夹
+                    </Button>
+                    <Button variant="secondary" onClick={() => void createTempWorkspace()}>
+                      使用临时目录
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setWsPickMode("new");
+                        setWsPathDraft(settings.cwd ?? "");
+                        setWsPathOpen(true);
+                      }}
+                    >
+                      输入路径
+                    </Button>
+                  </div>
+                  {workspaces.filter((ws) => !ws.temporary || !pathsEqual(ws.path, settings.cwd)).length ? (
+                    <div className="chat-empty-recent">
+                      <div className="chat-empty-recent-label">最近工作区</div>
+                      {workspaces.slice(0, 6).map((ws) => (
+                        <button
+                          key={ws.path}
+                          type="button"
+                          className={pathsEqual(ws.path, settings.cwd) ? "active" : ""}
+                          onClick={() => void selectWorkspace(ws.path, "new")}
+                        >
+                          <Folder size={14} />
+                          <span>{ws.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
+              ) : null}
+              {timeline.map((item) => (
+                item.role === "tool" ? (
+                  <div key={item.id} className="bubble tool">
+                    <ToolCard item={item} />
+                  </div>
+                ) : (
+                  <div key={item.id} className={`bubble ${item.role === "system" ? "error" : item.role}`}>
+                    <div className="role">{roleLabel(item.role, item.toolName)}</div>
+                    {item.role === "assistant" ? (
+                      <Markdown>{item.text}</Markdown>
+                    ) : (
+                      <div className="bubble-text">{item.text}</div>
+                    )}
+                  </div>
+                )
               ))}
               {streaming ? (
                 <div className="bubble assistant">
@@ -640,6 +861,18 @@ export function App() {
             </div>
             <div className="composer-wrap" data-aluka-drag="no-drag">
               <form className="composer" onSubmit={(e) => void onSend(e)}>
+                <button
+                  type="button"
+                  className="composer-workspace"
+                  title={settings.cwd || "临时工作区"}
+                  onClick={() => void chooseWorkspace(isEmptyChat ? "new" : "latest")}
+                >
+                  <Folder size={13} />
+                  <span>
+                    {activeWorkspace?.name
+                      || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "选择工作区")}
+                  </span>
+                </button>
                 <Textarea
                   className="ui-textarea--composer"
                   rows={3}
@@ -691,12 +924,24 @@ export function App() {
                       })();
                     }}
                   />
-                  <Button variant="secondary" disabled={!busy} onClick={() => void rpc("abortPrompt")}>
-                    停止
-                  </Button>
-                  <Button type="submit" disabled={busy || !prompt.trim()}>
-                    发送
-                  </Button>
+                  {busy ? (
+                    <button
+                      type="button"
+                      className="composer-run-btn"
+                      title="停止生成"
+                      aria-label="停止生成"
+                      onClick={() => void rpc("abortPrompt")}
+                    >
+                      <span className="composer-run-btn__orbit" aria-hidden="true">
+                        <span className="composer-run-btn__spark" />
+                      </span>
+                      <span className="composer-run-btn__stop" />
+                    </button>
+                  ) : (
+                    <Button type="submit" disabled={!prompt.trim()}>
+                      发送
+                    </Button>
+                  )}
                 </div>
               </form>
               <div className="usage-chip">{formatUsage(usage)}</div>
@@ -731,49 +976,61 @@ export function App() {
                     title="工作区"
                     hint="Agent 运行时的工作目录，影响相对路径、技能与本地扩展解析。"
                   />
-                  <div className="settings-card">
-                    <Input
-                      label="工作目录（cwd）"
-                      hint="相对路径、技能与本地扩展均相对此目录解析。"
-                      value={settings.cwd ?? ""}
-                      onChange={(cwd) => setSettings((s) => ({ ...s, cwd }))}
-                    />
-                    <p className="settings-meta">
-                      当前模型：{settings.provider || "—"}/{settings.model || "—"}
-                      {settings.baseUrl ? ` · ${settings.baseUrl}` : ""}
-                    </p>
-                    <Input
-                      label="全局回退 API Key"
-                      type="password"
-                      value={apiKeyDraft}
-                      placeholder="留空则保持不变"
-                      onChange={setApiKeyDraft}
-                      hint="写入 settings.json。用作各供应商密钥的全局回退。"
-                      status={settings.hasApiKey ? "已配置全局/环境密钥" : "未配置全局/环境密钥"}
-                    />
-                    <div className="settings-inline-actions">
-                      <Button onClick={() => void saveGeneralSettings()}>保存工作区</Button>
-                    </div>
+                  <Input
+                    label="工作目录（cwd）"
+                    hint="相对路径、技能与本地扩展均相对此目录解析。留空并保存不会改路径；新对话未选择时使用临时目录。"
+                    value={settings.cwd ?? ""}
+                    onChange={(cwd) => setSettings((s) => ({ ...s, cwd }))}
+                  />
+                  <div className="settings-inline-actions">
+                    <Button variant="secondary" onClick={() => void chooseWorkspace("latest")}>
+                      浏览文件夹
+                    </Button>
+                    <Button variant="secondary" onClick={() => void createTempWorkspace()}>
+                      使用临时目录
+                    </Button>
+                  </div>
+                  {workspaces.length ? (
+                    <ul className="ws-settings-list">
+                      {workspaces.map((ws) => (
+                        <li key={ws.path} className={pathsEqual(ws.path, settings.cwd) ? "active" : ""}>
+                          <button type="button" onClick={() => void selectWorkspace(ws.path, "latest")}>
+                            <strong>{ws.name}</strong>
+                            <span>{ws.path}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <p className="settings-meta">
+                    当前模型：{settings.provider || "—"}/{settings.model || "—"}
+                    {settings.baseUrl ? ` · ${settings.baseUrl}` : ""}
+                  </p>
+                  <Input
+                    label="全局回退 API Key"
+                    type="password"
+                    value={apiKeyDraft}
+                    placeholder="留空则保持不变"
+                    onChange={setApiKeyDraft}
+                    hint="写入 settings.json。用作各供应商密钥的全局回退。"
+                    status={settings.hasApiKey ? "已配置全局/环境密钥" : "未配置全局/环境密钥"}
+                  />
+                  <div className="settings-inline-actions">
+                    <Button onClick={() => void saveGeneralSettings()}>保存工作区</Button>
                   </div>
                 </section>
               )}
 
               {settingsSection === "providers" && (
                 <section className="settings-panel">
-                  <SectionHead
-                    title="供应商"
-                    hint="管理模型供应商、接口地址与 API 密钥。"
+                  <ProvidersPanel
+                    activeProvider={settings.provider}
+                    activeModel={settings.model}
+                    onToast={toast}
+                    onActiveChanged={() => {
+                      void loadSettings();
+                    }}
                   />
-                  <div className="settings-card settings-card-flush">
-                    <ProvidersPanel
-                      activeProvider={settings.provider}
-                      activeModel={settings.model}
-                      onToast={toast}
-                      onActiveChanged={() => {
-                        void loadSettings();
-                      }}
-                    />
-                  </div>
                   <details className="settings-details">
                     <summary>models.json 只读预览（含 ~/.pi）</summary>
                     <pre className="hint models-preview">{modelsPreviewHtml}</pre>
@@ -784,20 +1041,18 @@ export function App() {
               {settingsSection === "appearance" && (
                 <section className="settings-panel">
                   <SectionHead title="外观" hint="主题立即预览，保存后写入设置。" />
-                  <div className="settings-card">
-                    <Switch
-                      label="深色主题"
-                      hint="关闭后切换为浅色主题。需点击保存才会写入设置。"
-                      checked={theme === "dark"}
-                      onChange={(on) => {
-                        const next = on ? "dark" : "light";
-                        setSettings((s) => ({ ...s, theme: next }));
-                        document.documentElement.setAttribute("data-theme", next);
-                      }}
-                    />
-                    <div className="settings-inline-actions">
-                      <Button onClick={() => void saveGeneralSettings()}>保存外观</Button>
-                    </div>
+                  <Switch
+                    label="深色主题"
+                    hint="关闭后切换为浅色主题。需点击保存才会写入设置。"
+                    checked={theme === "dark"}
+                    onChange={(on) => {
+                      const next = on ? "dark" : "light";
+                      setSettings((s) => ({ ...s, theme: next }));
+                      document.documentElement.setAttribute("data-theme", next);
+                    }}
+                  />
+                  <div className="settings-inline-actions">
+                    <Button onClick={() => void saveGeneralSettings()}>保存外观</Button>
                   </div>
                 </section>
               )}
@@ -808,63 +1063,59 @@ export function App() {
                     title="扩展包"
                     hint="可通过本地路径或 npm / file: 安装到 ~/.aluka/agent/npm-packages。同时会自动加载 ~/.pi/agent/settings.json 里 packages（npm: / git:）已安装的插件。"
                   />
-                  <div className="settings-card">
-                    <ul className="inv-list">
-                      {packages.length ? packages.map((pkg) => (
-                        <li key={pkg}>
-                          <div className="pkg-row">
-                            <span>{pkg}</span>
-                            <Button variant="secondary" size="sm" onClick={() => void (async () => {
-                              await rpc("removeLocalPackage", { path: pkg });
-                              await loadSettings();
-                              await refreshExtensions();
-                            })()}>移除</Button>
-                          </div>
-                        </li>
-                      )) : <li className="hint">尚未注册本地扩展包</li>}
-                    </ul>
-                    <div className="pkg-add">
-                      <Input
-                        label="本地路径"
-                        hint="扩展入口文件或目录的绝对路径。"
-                        value={pkgPath}
-                        placeholder="E:\path\to\extension.ts"
-                        onChange={setPkgPath}
-                      />
-                      <Button variant="secondary" onClick={() => void (async () => {
-                        if (!pkgPath.trim()) return;
-                        await rpc("addLocalPackage", { path: pkgPath.trim() });
-                        setPkgPath("");
-                        await loadSettings();
-                        await refreshExtensions();
-                      })()}>添加路径</Button>
-                    </div>
-                    <div className="pkg-add">
-                      <Input
-                        label="npm 包"
-                        hint="npm 包名，或 file:./my-ext 本地包。"
-                        value={npmSpec}
-                        placeholder="npm 包名或 file:./my-ext"
-                        onChange={setNpmSpec}
-                      />
-                      <Button variant="secondary" onClick={() => {
-                        if (!npmSpec.trim()) return;
-                        setNpmHint(`正在安装 ${npmSpec}…`);
-                        void rpc("installNpmPackage", { spec: npmSpec.trim() });
-                      }}>安装</Button>
-                    </div>
-                    {npmHint ? <p className="settings-meta">{npmHint}</p> : null}
+                  <ul className="pkg-list">
+                    {packages.length ? packages.map((pkg) => (
+                      <li key={pkg} className="pkg-row">
+                        <span>{pkg}</span>
+                        <Button variant="ghost" size="sm" onClick={() => void (async () => {
+                          await rpc("removeLocalPackage", { path: pkg });
+                          await loadSettings();
+                          await refreshExtensions();
+                        })()}>移除</Button>
+                      </li>
+                    )) : <li className="hint">尚未注册本地扩展包</li>}
+                  </ul>
+                  <div className="pkg-add">
+                    <Input
+                      label="本地路径"
+                      hint="扩展入口文件或目录的绝对路径。"
+                      value={pkgPath}
+                      placeholder="E:\path\to\extension.ts"
+                      onChange={setPkgPath}
+                    />
+                    <Button variant="secondary" onClick={() => void (async () => {
+                      if (!pkgPath.trim()) return;
+                      await rpc("addLocalPackage", { path: pkgPath.trim() });
+                      setPkgPath("");
+                      await loadSettings();
+                      await refreshExtensions();
+                    })()}>添加路径</Button>
                   </div>
+                  <div className="pkg-add">
+                    <Input
+                      label="npm 包"
+                      hint="npm 包名，或 file:./my-ext 本地包。"
+                      value={npmSpec}
+                      placeholder="npm 包名或 file:./my-ext"
+                      onChange={setNpmSpec}
+                    />
+                    <Button variant="secondary" onClick={() => {
+                      if (!npmSpec.trim()) return;
+                      setNpmHint(`正在安装 ${npmSpec}…`);
+                      void rpc("installNpmPackage", { spec: npmSpec.trim() });
+                    }}>安装</Button>
+                  </div>
+                  {npmHint ? <p className="settings-meta">{npmHint}</p> : null}
                 </section>
               )}
 
               {settingsSection === "usage" && (
                 <section className="settings-panel">
                   <SectionHead title="用量" hint="当前会话的 token 用量与估算费用，来自模型返回的 usage。" />
-                  <div className="settings-card">
-                    <p className="settings-meta" id="usage-summary">
-                      {usage ? `${formatUsage(usage)}\n${usage.note}` : "当前会话尚无 token 用量。"}
-                    </p>
+                  <p className="settings-meta" id="usage-summary">
+                    {usage ? `${formatUsage(usage)}\n${usage.note}` : "当前会话尚无 token 用量。"}
+                  </p>
+                  <div className="settings-inline-actions">
                     <Button variant="secondary" onClick={() => void refreshUsage(activeId)}>刷新用量</Button>
                   </div>
                 </section>
@@ -876,9 +1127,9 @@ export function App() {
                     title="关于"
                     hint="可选：设置环境变量 ALUKA_DESKTOP_RELEASES_URL 指向 GitHub releases/latest JSON，以启用检查更新。"
                   />
-                  <div className="settings-card">
-                    <p className="settings-meta">{about}</p>
-                    <p className="settings-meta">{updateHint}</p>
+                  <p className="settings-meta">{about}</p>
+                  <p className="settings-meta">{updateHint}</p>
+                  <div className="settings-inline-actions">
                     <Button variant="secondary" onClick={() => {
                       setUpdateHint("正在检查…");
                       void rpc("checkForUpdates");
@@ -935,8 +1186,33 @@ export function App() {
         ))}
       </div>
 
-      <div className={`modal ${modal ? "" : "hidden"}`} data-aluka-drag="no-drag">
-        {modal && modal.kind !== "notify" ? (
+      <div className={`modal ${modal || wsPathOpen ? "" : "hidden"}`} data-aluka-drag="no-drag">
+        {wsPathOpen ? (
+          <div className="modal-card">
+            <h3>打开工作区</h3>
+            <p className="modal-body">输入文件夹路径。未选择时，新对话会使用自动生成的临时目录。</p>
+            <Input
+              className="modal-input"
+              label="文件夹路径"
+              placeholder="E:\code\my-project"
+              value={wsPathDraft}
+              onChange={setWsPathDraft}
+            />
+            <div className="modal-actions">
+              <Button variant="secondary" onClick={() => setWsPathOpen(false)}>取消</Button>
+              <Button
+                onClick={() => {
+                  const dir = wsPathDraft.trim();
+                  if (!dir) return;
+                  setWsPathOpen(false);
+                  void addWorkspaceByPath(dir, wsPickMode);
+                }}
+              >
+                打开
+              </Button>
+            </div>
+          </div>
+        ) : modal && modal.kind !== "notify" ? (
           <div className="modal-card">
             <h3>{modal.title}</h3>
             <p className="modal-body">{modal.kind === "confirm" ? modal.message : modal.kind === "select" ? "请选择一项：" : ""}</p>

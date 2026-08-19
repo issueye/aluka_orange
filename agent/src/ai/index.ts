@@ -2,7 +2,7 @@
  * AI 模块入口
  *
  * 导出 LLM 交互所需的所有类型、流式调用函数和 Schema 工具。
- * 支持 OpenAI 和 Anthropic 两种 API 协议。
+ * 支持 OpenAI Chat Completions、OpenAI Responses 和 Anthropic 三种 API 协议。
  */
 
 import { Type } from "typebox";
@@ -34,6 +34,7 @@ export function getProviders(): string[] {
 }
 export {
   StringEnum,
+  coerceApi,
   type Api,
   type AssistantMessage,
   type AssistantMessageEvent,
@@ -65,6 +66,9 @@ export {
 // OpenAI 兼容 API 流式调用
 export { streamOpenAI } from "./openai.ts";
 
+// OpenAI Responses API 流式调用
+export { streamOpenAIResponses } from "./openai-responses.ts";
+
 // Anthropic Messages API 流式调用
 export { streamAnthropic } from "./anthropic.ts";
 
@@ -72,4 +76,4 @@ export { streamAnthropic } from "./anthropic.ts";
 export { streamModel, type StreamFn } from "./stream.ts";
 
 // TypeBox Schema 与 JSON Schema 的转换及参数校验
-export { typeboxToJsonSchema, validateArgs } from "./schema.ts";
+export { typeboxToJsonSchema, sanitizeToolJsonSchema, validateArgs } from "./schema.ts";

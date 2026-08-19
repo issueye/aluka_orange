@@ -37,12 +37,17 @@ import {
   removeCustomModelFromModelsJson,
   setProviderApiKeyInModelsJson,
   clearProviderApiKeyInModelsJson,
+  addModelsToProviderInModelsJson,
+  fetchOpenAiModelList,
+  fetchProviderRemoteModels,
   listModelOptions,
   lookupProviderModel,
   type ModelsJsonPreview,
   type ModelsJsonConfigView,
   type ModelOptionView,
   type UpsertCustomProviderInput,
+  type AddProviderModelsInput,
+  type RemoteModelView,
 } from "./models-json.ts";
 import {
   installNpmPackageToAgent,
@@ -63,6 +68,16 @@ import {
   type SessionUsageView,
 } from "./session-usage.ts";
 import type { Usage } from "../ai/types.ts";
+import {
+  createTemporaryWorkspace,
+  ensureWorkspaceDir,
+  forgetWorkspace,
+  isTemporaryWorkspace,
+  normalizeWorkspaceList,
+  rememberWorkspace,
+  samePath,
+  workspaceDisplayName,
+} from "./workspaces.ts";
 
 /** 投影给桌面 UI 的精简事件（可 JSON 序列化） */
 export type DesktopRuntimeEvent =
@@ -95,6 +110,11 @@ export interface TimelineItem {
   text: string;
   toolName?: string;
   timestamp: number;
+  toolCallId?: string;
+  args?: unknown;
+  resultText?: string;
+  isError?: boolean;
+  toolStatus?: "running" | "done" | "error";
 }
 
 export interface ExtensionListItem {
@@ -114,14 +134,46 @@ export interface SkillListItem {
   path: string;
 }
 
+export interface WorkspaceSessionView {
+  id: string;
+  title: string;
+  mtime: number;
+}
+
+export interface WorkspaceView {
+  path: string;
+  name: string;
+  temporary: boolean;
+  sessions: WorkspaceSessionView[];
+}
+
+export type SelectWorkspaceMode = "latest" | "new";
+
+export interface SessionHandle {
+  id: string;
+  file: string;
+  cwd: string;
+}
+
+export interface OpenedSession extends SessionHandle {
+  timeline: TimelineItem[];
+}
+
 export interface DesktopRuntime {
   readonly cwd: string;
   readonly agentDir: string;
   getSettings(): ReturnType<typeof settingsView>;
   patchSettings(patch: DesktopSettings): ReturnType<typeof settingsView>;
   listSessions(): SessionSummary[];
-  createSession(): { id: string; file: string };
-  openSession(id: string): { id: string; file: string; timeline: TimelineItem[] };
+  listWorkspaces(): WorkspaceView[];
+  selectWorkspace(dir: string, mode?: SelectWorkspaceMode): OpenedSession;
+  addWorkspace(dir: string, mode?: SelectWorkspaceMode): OpenedSession;
+  createTempWorkspace(mode?: SelectWorkspaceMode): OpenedSession;
+  removeWorkspace(dir: string): { cwd: string; workspaces: WorkspaceView[] };
+  createSession(opts?: { cwd?: string }): SessionHandle;
+  openSession(id: string, workspacePath?: string): OpenedSession;
+  /** 删除会话；若删的是当前会话则切到最近一条或新建 */
+  deleteSession(id: string, workspacePath?: string): OpenedSession;
   getActiveSessionId(): string | undefined;
   getTimeline(): TimelineItem[];
   isBusy(): boolean;
@@ -139,6 +191,13 @@ export interface DesktopRuntime {
   /** 可编辑的 Aluka agentDir/models.json 配置视图 */
   getModelsJsonConfig(): ModelsJsonConfigView;
   upsertCustomProvider(input: UpsertCustomProviderInput): ModelsJsonConfigView;
+  addProviderModels(input: AddProviderModelsInput): ModelsJsonConfigView;
+  fetchRemoteModels(opts: {
+    provider?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    proxy?: string;
+  }): Promise<{ provider?: string; baseUrl: string; models: RemoteModelView[] }>;
   removeCustomProvider(provider: string): ModelsJsonConfigView;
   removeCustomModel(provider: string, modelId: string): ModelsJsonConfigView;
   setProviderApiKey(provider: string, apiKey: string): ModelsJsonConfigView;
@@ -193,13 +252,7 @@ function projectEvent(sessionId: string, event: AgentEvent): DesktopRuntimeEvent
         args: event.args,
       };
     case "tool_execution_end": {
-      let resultText = "";
-      try {
-        resultText = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
-      } catch {
-        resultText = String(event.result);
-      }
-      if (resultText.length > 4000) resultText = `${resultText.slice(0, 4000)}…`;
+      const resultText = clipToolText(toolResultText(event.result));
       return {
         type: "tool_end",
         sessionId,
@@ -214,30 +267,86 @@ function projectEvent(sessionId: string, event: AgentEvent): DesktopRuntimeEvent
   }
 }
 
+function clipToolText(text: string, max = 24_000): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n…`;
+}
+
+function toolResultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (!result || typeof result !== "object") return String(result ?? "");
+  const rec = result as { content?: unknown; text?: unknown };
+  if (typeof rec.text === "string" && rec.text) return rec.text;
+  if (Array.isArray(rec.content)) {
+    const text = rec.content
+      .map((part) => {
+        if (!part || typeof part !== "object") return "";
+        const item = part as { type?: string; text?: unknown };
+        return typeof item.text === "string" ? item.text : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (text) return text;
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return String(result);
+  }
+}
+
 function timelineFromHistory(messages: AgentMessage[]): TimelineItem[] {
-  return messages.map((message, index) => {
-    if (message.role === "toolResult") {
-      return {
-        id: `tool-${index}`,
-        role: "tool" as const,
-        text: textFrom(message),
-        toolName: message.toolName,
-        timestamp: Date.now(),
-      };
+  const argsById = new Map<string, { name: string; args: unknown }>();
+  const items: TimelineItem[] = [];
+  messages.forEach((message, index) => {
+    if (message.role === "assistant") {
+      for (const part of message.content) {
+        if (part.type === "toolCall") {
+          argsById.set(part.id, { name: part.name, args: part.arguments ?? {} });
+        }
+      }
     }
-    const role =
-      message.role === "assistant" ? ("assistant" as const) : message.role === "user" ? ("user" as const) : ("system" as const);
+    if (message.role === "toolResult") {
+      const call = argsById.get(message.toolCallId);
+      const resultText = textFrom(message);
+      items.push({
+        id: `tool-${message.toolCallId || index}`,
+        role: "tool",
+        text: resultText,
+        toolName: message.toolName || call?.name,
+        timestamp: Date.now(),
+        toolCallId: message.toolCallId,
+        args: call?.args,
+        resultText,
+        isError: Boolean(message.isError),
+        toolStatus: message.isError ? "error" : "done",
+      });
+      return;
+    }
+    if (message.role === "assistant") {
+      const text = textFrom(message);
+      if (!text.trim()) return;
+      items.push({
+        id: `assistant-${index}`,
+        role: "assistant",
+        text,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+    const role = message.role === "user" ? ("user" as const) : ("system" as const);
     const ts =
       message.role === "user" && "timestamp" in message && typeof (message as { timestamp?: number }).timestamp === "number"
         ? (message as { timestamp: number }).timestamp
         : Date.now();
-    return {
+    items.push({
       id: `${role}-${index}`,
       role,
       text: textFrom(message),
       timestamp: ts,
-    };
+    });
   });
+  return items;
 }
 
 function historyFromSession(session: SessionManager): AgentMessage[] {
@@ -269,6 +378,14 @@ function skillItems(skills: Skill[]): SkillListItem[] {
   }));
 }
 
+function pruneEmptyTempWorkspaces(paths: string[], current: string, agentDir: string): string[] {
+  return paths.filter((dir) => {
+    if (samePath(dir, current)) return true;
+    if (!isTemporaryWorkspace(dir)) return true;
+    return SessionManager.list(getSessionsDir(dir, agentDir)).length > 0;
+  });
+}
+
 function resolveExtraPaths(cwd: string, settings: DesktopSettings, opts: CreateDesktopRuntimeOptions): string[] {
   const fromOpts = opts.extraExtensionPaths ?? [];
   const fromSettings = settings.extraExtensions ?? [];
@@ -278,12 +395,17 @@ function resolveExtraPaths(cwd: string, settings: DesktopSettings, opts: CreateD
 export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {}): Promise<DesktopRuntime> {
   const agentDir = opts.agentDir ?? getAgentDir();
   const stored = loadSettings(agentDir);
-  let cwd = path.resolve(opts.cwd ?? stored.cwd ?? process.cwd());
-  let settings = { ...stored };
+  const createdTemp = !opts.cwd && !stored.cwd;
+  let cwd = ensureWorkspaceDir(opts.cwd ?? stored.cwd ?? createTemporaryWorkspace());
+  let workspacePaths = normalizeWorkspaceList(stored.workspaces ?? [], cwd);
+  let settings: DesktopSettings = { ...stored, cwd, workspaces: workspacePaths };
   if (opts.model) settings.model = opts.model;
   if (opts.provider) settings.provider = opts.provider;
   if (opts.baseUrl) settings.baseUrl = opts.baseUrl;
   if (opts.apiKey) settings.apiKey = opts.apiKey;
+  if (createdTemp || !stored.workspaces?.length) {
+    settings = saveSettings(settings, agentDir);
+  }
 
   const initial = resolveRuntimeModel({
     agentDir,
@@ -379,6 +501,99 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     await opts.onEvent?.(event);
   };
 
+  function persistWorkspaceState(extra: DesktopSettings = {}) {
+    settings = saveSettings(
+      {
+        ...settings,
+        ...extra,
+        cwd,
+        workspaces: workspacePaths,
+      },
+      agentDir,
+    );
+  }
+
+  function persistSessionPointer() {
+    persistWorkspaceState({ lastSessionId: session.id });
+  }
+
+  function listWorkspaceViews(): WorkspaceView[] {
+    workspacePaths = pruneEmptyTempWorkspaces(workspacePaths, cwd, agentDir);
+    const views = workspacePaths.map((dir) => {
+      const sessions = SessionManager.list(getSessionsDir(dir, agentDir)).map((item) => ({
+        id: item.id,
+        title: item.title,
+        mtime: item.mtime,
+      }));
+      return {
+        path: dir,
+        name: workspaceDisplayName(dir),
+        temporary: isTemporaryWorkspace(dir),
+        sessions,
+      };
+    });
+    views.sort((a, b) => {
+      if (samePath(a.path, cwd) && !samePath(b.path, cwd)) return -1;
+      if (samePath(b.path, cwd) && !samePath(a.path, cwd)) return 1;
+      const aTime = a.sessions[0]?.mtime ?? 0;
+      const bTime = b.sessions[0]?.mtime ?? 0;
+      if (aTime !== bTime) return bTime - aTime;
+      return a.name.localeCompare(b.name);
+    });
+    return views;
+  }
+
+  function applyWorkspace(nextDir: string) {
+    const resolved = ensureWorkspaceDir(nextDir);
+    const changed = !samePath(resolved, cwd);
+    cwd = resolved;
+    workspacePaths = rememberWorkspace(workspacePaths, resolved);
+    persistWorkspaceState();
+    if (changed) {
+      void reloadExtensionsForCwd(resolved);
+    }
+    return changed;
+  }
+
+  function bindSession(next: SessionManager) {
+    session = next;
+    history = historyFromSession(session);
+    persistSessionPointer();
+    tools = rebuildTools();
+    return {
+      id: session.id,
+      file: session.file,
+      cwd,
+      timeline: timelineFromHistory(history),
+    };
+  }
+
+  function openLatestOrNew(): OpenedSession {
+    const listed = SessionManager.list(sessionDir());
+    if (listed[0]) {
+      return bindSession(SessionManager.open(sessionDir(), listed[0].id));
+    }
+    history = [];
+    session = SessionManager.create(sessionDir());
+    persistSessionPointer();
+    tools = rebuildTools();
+    return { id: session.id, file: session.file, cwd, timeline: [] };
+  }
+
+  function switchToWorkspace(dir: string, mode: SelectWorkspaceMode = "latest"): OpenedSession {
+    applyWorkspace(dir);
+    if (mode === "new") {
+      history = [];
+      session = SessionManager.create(sessionDir());
+      persistSessionPointer();
+      tools = rebuildTools();
+      return { id: session.id, file: session.file, cwd, timeline: [] };
+    }
+    return openLatestOrNew();
+  }
+
+  persistSessionPointer();
+
   function resolveKey(): string | undefined {
     return resolveRuntimeApiKey({ agentDir, model, apiKey: settings.apiKey });
   }
@@ -389,6 +604,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     model.provider = next.provider;
     model.api = next.api;
     model.baseUrl = next.baseUrl;
+    model.proxy = next.proxy;
     model.reasoning = next.reasoning;
     model.input = next.input;
     model.cost = next.cost;
@@ -447,16 +663,24 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       return settingsView(settings, agentDir);
     },
     patchSettings(patch) {
-      const cwdChanged = Boolean(patch.cwd && path.resolve(patch.cwd) !== cwd);
+      const cwdChanged = Boolean(patch.cwd && !samePath(patch.cwd, cwd));
       const mergedExtra =
         patch.extraExtensions !== undefined
           ? normalizePackagePaths(patch.extraExtensions, patch.cwd ? path.resolve(patch.cwd) : cwd)
           : settings.extraExtensions;
+      if (patch.cwd) {
+        cwd = ensureWorkspaceDir(patch.cwd);
+        workspacePaths = rememberWorkspace(workspacePaths, cwd);
+      }
+      if (patch.workspaces) {
+        workspacePaths = normalizeWorkspaceList(patch.workspaces, cwd);
+      }
       settings = saveSettings(
         {
           ...settings,
           ...patch,
-          cwd: patch.cwd ? path.resolve(patch.cwd) : cwd,
+          cwd,
+          workspaces: workspacePaths,
           extraExtensions: mergedExtra,
         },
         agentDir,
@@ -471,7 +695,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       }
       runner.setModel(model);
       if (cwdChanged) {
-        void reloadExtensionsForCwd(path.resolve(patch.cwd!));
+        void reloadExtensionsForCwd(cwd);
       } else if (patch.extraExtensions !== undefined) {
         void reloadExtensionsForCwd(cwd);
       } else {
@@ -482,19 +706,57 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     listSessions() {
       return SessionManager.list(sessionDir());
     },
-    createSession() {
-      session = SessionManager.create(sessionDir());
-      history = [];
-      settings = saveSettings({ ...settings, lastSessionId: session.id, cwd }, agentDir);
-      tools = rebuildTools();
-      return { id: session.id, file: session.file };
+    listWorkspaces() {
+      return listWorkspaceViews();
     },
-    openSession(id) {
-      session = SessionManager.open(sessionDir(), id);
-      history = historyFromSession(session);
-      settings = saveSettings({ ...settings, lastSessionId: session.id, cwd }, agentDir);
+    selectWorkspace(dir, mode = "latest") {
+      return switchToWorkspace(dir, mode);
+    },
+    addWorkspace(dir, mode = "latest") {
+      return switchToWorkspace(dir, mode);
+    },
+    createTempWorkspace(mode = "new") {
+      return switchToWorkspace(createTemporaryWorkspace(), mode);
+    },
+    removeWorkspace(dir) {
+      const removingCurrent = samePath(dir, cwd);
+      workspacePaths = forgetWorkspace(workspacePaths, dir);
+      if (removingCurrent) {
+        const fallback = workspacePaths[0] ?? createTemporaryWorkspace();
+        applyWorkspace(fallback);
+        openLatestOrNew();
+      } else {
+        persistWorkspaceState();
+      }
+      return { cwd, workspaces: listWorkspaceViews() };
+    },
+    createSession(opts) {
+      if (opts?.cwd) applyWorkspace(opts.cwd);
+      history = [];
+      session = SessionManager.create(sessionDir());
+      persistSessionPointer();
       tools = rebuildTools();
-      return { id: session.id, file: session.file, timeline: timelineFromHistory(history) };
+      return { id: session.id, file: session.file, cwd };
+    },
+    openSession(id, workspacePath) {
+      if (workspacePath) applyWorkspace(workspacePath);
+      return bindSession(SessionManager.open(sessionDir(), id));
+    },
+    deleteSession(id, workspacePath) {
+      const targetCwd = workspacePath?.trim() ? ensureWorkspaceDir(workspacePath) : cwd;
+      const dir = getSessionsDir(targetCwd, agentDir);
+      const deletingActive = samePath(targetCwd, cwd) && session.id === id;
+      if (deletingActive && busy) controller?.abort();
+      if (!SessionManager.remove(dir, id)) {
+        throw new Error(`session not found: ${id}`);
+      }
+      if (deletingActive) return openLatestOrNew();
+      return {
+        id: session.id,
+        file: session.file,
+        cwd,
+        timeline: timelineFromHistory(history),
+      };
     },
     getActiveSessionId() {
       return session.id;
@@ -544,6 +806,18 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     },
     upsertCustomProvider(input) {
       return upsertCustomProviderInModelsJson(agentDir, input);
+    },
+    addProviderModels(input) {
+      return addModelsToProviderInModelsJson(agentDir, input);
+    },
+    async fetchRemoteModels(opts) {
+      if (opts.provider?.trim()) {
+        return fetchProviderRemoteModels(agentDir, opts.provider, opts.apiKey, opts.proxy);
+      }
+      const baseUrl = opts.baseUrl?.trim();
+      if (!baseUrl) throw new Error("fetchRemoteModels requires provider or baseUrl");
+      const models = await fetchOpenAiModelList({ baseUrl, apiKey: opts.apiKey, proxy: opts.proxy });
+      return { baseUrl, models };
     },
     removeCustomProvider(provider) {
       return removeCustomProviderFromModelsJson(agentDir, provider);
@@ -626,9 +900,19 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       runner.setSignal(controller);
       const sessionId = session.id;
 
+      const releaseBusy = () => {
+        busy = false;
+        controller = undefined;
+        runner.setIdle(true);
+        runner.setSignal(undefined);
+      };
+
       try {
         const input = await runner.emitInput(trimmed);
-        if (input?.action === "handled") return;
+        if (input?.action === "handled") {
+          await emitDesktop({ type: "agent_end", sessionId });
+          return;
+        }
         const promptText = input?.action === "transform" ? input.text : trimmed;
 
         session.append({ type: "user", role: "user", text: promptText });
@@ -691,14 +975,16 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
           }),
         });
       } catch (error) {
+        releaseBusy();
         const message = error instanceof Error ? error.message : String(error);
-        await emitDesktop({ type: "error", sessionId, message });
+        try {
+          await emitDesktop({ type: "error", sessionId, message });
+        } catch {
+          /* 上报失败不能重新锁住 Agent */
+        }
         throw error;
       } finally {
-        busy = false;
-        controller = undefined;
-        runner.setIdle(true);
-        runner.setSignal(undefined);
+        releaseBusy();
       }
     },
   };

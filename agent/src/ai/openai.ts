@@ -10,7 +10,6 @@
 
 import type {
   AssistantMessage,
-  AssistantMessageEvent,
   AssistantMessageEventStream,
   ContentBlock,
   Context,
@@ -20,66 +19,9 @@ import type {
   ToolCallContent,
 } from "./types.ts";
 import { typeboxToJsonSchema } from "./schema.ts";
-
-/**
- * 流式响应的内部实现
- *
- * 使用生产者-消费者模式：
- * - push() 方法由网络请求线程推送事件
- * - 异步迭代器供 Agent 循环消费事件
- */
-class StreamImpl implements AssistantMessageEventStream {
-  /** 已推送的事件队列 */
-  private readonly events: AssistantMessageEvent[] = [];
-  /** 等待新事件的消费者回调 */
-  private readonly waiters: Array<() => void> = [];
-  /** 流是否已结束 */
-  private finished = false;
-  /** 最终的完整助手消息 */
-  private final: AssistantMessage | undefined;
-  /** 流中的错误 */
-  private failure: Error | undefined;
-
-  /** 推送一个事件到流中 */
-  push(event: AssistantMessageEvent): void {
-    this.events.push(event);
-    if (event.type === "done") this.final = event.message;
-    if (event.type === "error") this.failure = event.error;
-    // 唤醒所有等待的消费者
-    this.waiters.splice(0).forEach((wake) => wake());
-  }
-
-  /** 标记流结束 */
-  end(): void {
-    this.finished = true;
-    this.waiters.splice(0).forEach((wake) => wake());
-  }
-
-  /** 消费流并返回最终的完整助手消息 */
-  async result(): Promise<AssistantMessage> {
-    for await (const event of this) {
-      if (event.type === "done") return event.message;
-      if (event.type === "error") throw event.error;
-    }
-    if (this.failure) throw this.failure;
-    if (!this.final) throw new Error("Stream ended without an assistant message");
-    return this.final;
-  }
-
-  /** 异步迭代器：逐个产出事件 */
-  async *[Symbol.asyncIterator](): AsyncIterator<AssistantMessageEvent> {
-    let index = 0;
-    while (true) {
-      // 先消费已有的事件
-      while (index < this.events.length) {
-        yield this.events[index++];
-      }
-      if (this.finished) return;
-      // 等待新事件到达
-      await new Promise<void>((resolve) => this.waiters.push(resolve));
-    }
-  }
-}
+import { logProviderCall } from "./request-log.ts";
+import { StreamImpl, readSse, trimSlash } from "./sse.ts";
+import { providerFetch } from "./provider-fetch.ts";
 
 /** OpenAI 工具调用增量数据结构 */
 interface OpenAIToolCallDelta {
@@ -184,12 +126,14 @@ async function run(
     ...(model.headers ?? {}),
   };
 
-  const response = await fetch(`${trimSlash(baseUrl)}/chat/completions`, {
+  const url = `${trimSlash(baseUrl)}/chat/completions`;
+  const requestBody = JSON.stringify(body);
+  const response = await providerFetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: requestBody,
     signal: options.signal,
-  });
+  }, model.proxy);
 
   // 收集响应头
   const responseHeaders: Record<string, string> = {};
@@ -200,8 +144,25 @@ async function run(
 
   if (!response.ok) {
     const text = await response.text();
+    logProviderCall({
+      api: "openai-completions",
+      url,
+      model: model.id,
+      provider: model.provider,
+      requestBody,
+      status: response.status,
+      responseBody: text,
+    });
     throw new Error(`OpenAI-compatible request failed (${response.status}): ${text.slice(0, 2000)}`);
   }
+  logProviderCall({
+    api: "openai-completions",
+    url,
+    model: model.id,
+    provider: model.provider,
+    requestBody,
+    status: response.status,
+  });
   if (!response.body) throw new Error("Provider returned an empty body");
 
   stream.push({ type: "start" });
@@ -359,37 +320,4 @@ function toOpenAIMessages(context: Context): unknown[] {
     }
   }
   return messages;
-}
-
-/**
- * 从 ReadableStream 中读取 SSE (Server-Sent Events) 数据
- *
- * 按行解析，提取以 "data:" 开头的行的内容。
- * 用于消费 OpenAI 兼容 API 的流式响应。
- */
-async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newline: number;
-    while ((newline = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, newline).trimEnd();
-      buffer = buffer.slice(newline + 1);
-      if (line.startsWith("data:")) {
-        yield line.slice(5).trim();
-      }
-    }
-  }
-  // 处理缓冲区中剩余的数据
-  const leftover = buffer.trim();
-  if (leftover.startsWith("data:")) yield leftover.slice(5).trim();
-}
-
-/** 去除 URL 末尾的斜杠 */
-function trimSlash(url: string): string {
-  return url.endsWith("/") ? url.slice(0, -1) : url;
 }

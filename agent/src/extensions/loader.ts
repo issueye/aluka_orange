@@ -13,7 +13,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import * as nodeModule from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createJiti } from "jiti";
+import { createJiti, type TransformOptions, type TransformResult } from "jiti";
 import { getAgentDir, getPiAgentDir } from "../config.ts";
 import { createSyntheticSourceInfo } from "../source-info.ts";
 import { createEventBus } from "./event-bus.ts";
@@ -284,13 +284,7 @@ export function createExtensionLoaderJiti() {
   });
 }
 
-function createJitiBabelTransform(): (opts: {
-  source: string;
-  filename?: string;
-  ts?: boolean;
-  jsx?: boolean;
-  interopDefault?: boolean;
-}) => { code: string; error?: unknown } {
+function createJitiBabelTransform(): (opts: TransformOptions) => TransformResult {
   let babelPath = "";
   try {
     babelPath = path.join(path.dirname(require.resolve("jiti/package.json")), "dist", "babel.cjs");

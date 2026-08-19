@@ -96,4 +96,30 @@ describe("agent loop", () => {
     expect(events).toContain("tool_execution_end");
     expect(events).toContain("agent_end");
   });
+
+  it("emits agent_end when the provider stream errors", async () => {
+    const streamFn = (): AssistantMessageEventStream => ({
+      async result() {
+        throw new Error("OpenAI-compatible request failed (403): denied");
+      },
+      async *[Symbol.asyncIterator]() {
+        yield { type: "error" as const, error: new Error("OpenAI-compatible request failed (403): denied") };
+      },
+    });
+    const events: string[] = [];
+    await expect(
+      runAgentLoop(
+        [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+        { systemPrompt: "test", messages: [], tools: [] },
+        { model },
+        async (event) => {
+          events.push(event.type);
+        },
+        undefined,
+        streamFn,
+      ),
+    ).rejects.toThrow(/403/);
+    expect(events).toContain("agent_start");
+    expect(events).toContain("agent_end");
+  });
 });

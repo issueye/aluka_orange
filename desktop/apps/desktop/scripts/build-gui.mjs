@@ -6,7 +6,7 @@
  *
  * 环境变量：
  *   ALUKA  — aluka 可执行文件路径
- *   OUT    — 产物路径（默认 ../../dist/AlukaDesktop.exe，相对 apps/desktop）
+ *   OUT    — 产物路径（默认仓库根 dist/AlukaDesktop.exe）
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -18,7 +18,7 @@ const appRoot = path.resolve(__dirname, "..");
 const uiIndex = path.join(appRoot, "dist", "ui", "index.html");
 const entry = path.join(appRoot, "src", "main", "index.ts");
 const icon = path.join(appRoot, "assets", "icon.ico");
-const defaultOut = path.resolve(appRoot, "../../dist/AlukaDesktop.exe");
+const defaultOut = path.resolve(appRoot, "../../../dist/AlukaDesktop.exe");
 const outfile = process.env.OUT?.trim() || defaultOut;
 
 function resolveAluka() {
@@ -72,3 +72,9 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 console.log(`[build-gui] wrote ${outfile}`);
+const desktopCopy = path.resolve(appRoot, "../../dist/AlukaDesktop.exe");
+if (path.normalize(desktopCopy) !== path.normalize(outfile)) {
+  fs.mkdirSync(path.dirname(desktopCopy), { recursive: true });
+  fs.copyFileSync(outfile, desktopCopy);
+  console.log(`[build-gui] copied ${desktopCopy}`);
+}

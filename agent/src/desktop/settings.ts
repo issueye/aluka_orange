@@ -20,6 +20,8 @@ export interface DesktopSettings {
   apiKey?: string;
   cwd?: string;
   lastSessionId?: string;
+  /** 已知工作区路径（侧栏分组） */
+  workspaces?: string[];
   /** UI 主题 */
   theme?: ThemeId;
   /** 额外扩展路径（绝对或相对 cwd） */
@@ -44,6 +46,11 @@ function normalizeLoaded(raw: SettingsFile): DesktopSettings {
   }
   if (out.theme !== "dark" && out.theme !== "light") {
     delete out.theme;
+  }
+  if (Array.isArray(out.workspaces)) {
+    const dirs = out.workspaces.map(String).map((p) => p.trim()).filter(Boolean);
+    if (dirs.length) out.workspaces = [...new Set(dirs)];
+    else delete out.workspaces;
   }
   return out;
 }

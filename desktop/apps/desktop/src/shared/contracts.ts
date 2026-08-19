@@ -25,12 +25,30 @@ export interface SessionSummaryView {
   mtime: number;
 }
 
+export interface WorkspaceSessionView {
+  id: string;
+  title: string;
+  mtime: number;
+}
+
+export interface WorkspaceView {
+  path: string;
+  name: string;
+  temporary: boolean;
+  sessions: WorkspaceSessionView[];
+}
+
 export interface TimelineItemView {
   id: string;
   role: "user" | "assistant" | "tool" | "system";
   text: string;
   toolName?: string;
   timestamp: number;
+  toolCallId?: string;
+  args?: unknown;
+  resultText?: string;
+  isError?: boolean;
+  toolStatus?: "running" | "done" | "error";
 }
 
 export interface SettingsView {

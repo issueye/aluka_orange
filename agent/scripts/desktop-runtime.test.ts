@@ -10,6 +10,8 @@ import {
   parseGhGistStdout,
   resolveExtensionEntry,
   shareSessionViaGh,
+  isTemporaryWorkspace,
+  samePath,
 } from "../src/desktop/index.ts";
 import { SessionManager } from "../src/session/manager.ts";
 import type { AssistantMessageEventStream, Context, Model, StreamOptions } from "../src/ai/types.ts";
@@ -28,6 +30,9 @@ describe("session list/open", () => {
     const opened = SessionManager.open(dir, "a");
     assert.equal(opened.id, "a");
     assert.ok(opened.getEntries().some((e) => e.type === "user"));
+    assert.equal(SessionManager.remove(dir, "a"), true);
+    assert.equal(fs.existsSync(path.join(dir, "a.jsonl")), false);
+    assert.equal(SessionManager.remove(dir, "a"), false);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
@@ -366,6 +371,62 @@ describe("session usage", () => {
     assert.equal(buildSessionUsageView({ sessionId: "x", messages: [] }).oauthSupported, false);
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(cwd, { recursive: true, force: true });
+  });
+});
+
+describe("desktop workspaces", () => {
+  it("defaults to a generated temp workspace when cwd is not set", async () => {
+    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-agent-"));
+    const rt = await createDesktopRuntime({ agentDir });
+    assert.equal(isTemporaryWorkspace(rt.cwd), true);
+    const tree = rt.listWorkspaces();
+    assert.ok(tree.some((ws) => samePath(ws.path, rt.cwd) && ws.temporary));
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(rt.cwd, { recursive: true, force: true });
+  });
+
+  it("groups sessions by workspace and opens across cwd", async () => {
+    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-agent-"));
+    const wsA = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-wsA-"));
+    const wsB = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-wsB-"));
+    const rt = await createDesktopRuntime({ agentDir, cwd: wsA });
+    const createdA = rt.createSession();
+    fs.appendFileSync(
+      createdA.file,
+      `${JSON.stringify({ id: "u1", type: "user", role: "user", text: "hello from A", timestamp: Date.now() })}\n`,
+    );
+    const openedB = rt.selectWorkspace(wsB, "new");
+    assert.ok(samePath(openedB.cwd, wsB));
+    const createdB = rt.createSession();
+    fs.appendFileSync(
+      createdB.file,
+      `${JSON.stringify({ id: "u2", type: "user", role: "user", text: "hello from B", timestamp: Date.now() })}\n`,
+    );
+
+    const tree = rt.listWorkspaces();
+    const groupA = tree.find((ws) => samePath(ws.path, wsA));
+    const groupB = tree.find((ws) => samePath(ws.path, wsB));
+    assert.ok(groupA && groupA.sessions.some((s) => s.id === createdA.id));
+    assert.ok(groupB && groupB.sessions.some((s) => s.id === createdB.id));
+
+    const back = rt.openSession(createdA.id, wsA);
+    assert.ok(samePath(back.cwd, wsA));
+    assert.ok(back.timeline.some((item) => item.text.includes("hello from A")));
+
+    const afterDelete = rt.deleteSession(createdA.id, wsA);
+    assert.notEqual(afterDelete.id, createdA.id);
+    const treeAfter = rt.listWorkspaces();
+    const groupAAfter = treeAfter.find((ws) => samePath(ws.path, wsA));
+    assert.ok(groupAAfter && !groupAAfter.sessions.some((s) => s.id === createdA.id));
+
+    const temp = rt.createTempWorkspace("new");
+    assert.equal(isTemporaryWorkspace(temp.cwd), true);
+    assert.equal(temp.timeline.length, 0);
+
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(wsA, { recursive: true, force: true });
+    fs.rmSync(wsB, { recursive: true, force: true });
+    fs.rmSync(temp.cwd, { recursive: true, force: true });
   });
 });
 

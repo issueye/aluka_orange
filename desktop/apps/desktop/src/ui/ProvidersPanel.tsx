@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Trash2, KeyRound } from "lucide-react";
+import { CloudDownload, Pencil, Plus, Trash2, KeyRound } from "lucide-react";
 import { rpc } from "./bridge.ts";
-import { Button, Input, SectionHead, Select } from "./components/index.ts";
+import { Button, Input, SectionHead, Select, Textarea } from "./components/index.ts";
 
 /**
  * ProvidersPanel - 供应商管理面板
@@ -18,6 +18,7 @@ export type ModelsJsonProviderView = {
   provider: string;
   baseUrl?: string;
   api?: string;
+  proxy?: string;
   /** 是否已配置 API 密钥 */
   hasApiKeyField: boolean;
   /** 该供应商下的所有模型 */
@@ -32,8 +33,13 @@ export type ModelsJsonConfigView = {
   providers: ModelsJsonProviderView[];
 };
 
-/** API 类型：OpenAI 兼容或 Anthropic Messages */
-type ApiKind = "openai-completions" | "anthropic-messages";
+/** API 类型：Chat Completions / Responses / Anthropic Messages */
+type ApiKind = "openai-completions" | "openai-responses" | "anthropic-messages";
+
+function coerceApiKind(api?: string): ApiKind {
+  if (api === "anthropic-messages" || api === "openai-responses") return api;
+  return "openai-completions";
+}
 
 /** 添加/编辑供应商的表单草稿状态 */
 type Draft = {
@@ -43,8 +49,20 @@ type Draft = {
   modelId: string;        // 模型 ID
   modelName: string;      // 显示名称
   apiKey: string;         // API 密钥
+  proxy: string;          // HTTP/SOCKS 代理
+  modelIdsText: string;   // 批量添加：每行一个模型 ID
   previousProvider?: string;  // 编辑时的原供应商 ID（用于重命名）
   previousModelId?: string;   // 编辑时的原模型 ID
+};
+
+type RemoteModel = { id: string; name?: string; ownedBy?: string };
+
+type FetchPicker = {
+  provider: string;
+  models: RemoteModel[];
+  selected: string[];
+  query: string;
+  existing: string[];
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -54,6 +72,8 @@ const EMPTY_DRAFT: Draft = {
   modelId: "",
   modelName: "",
   apiKey: "",
+  proxy: "",
+  modelIdsText: "",
 };
 
 /** 快捷预设：一键添加常用供应商配置 */
@@ -64,6 +84,16 @@ const QUICK_PRESETS: Array<{ label: string; draft: Partial<Draft> }> = [
       provider: "openai",
       baseUrl: "https://api.openai.com/v1",
       api: "openai-completions",
+      modelId: "gpt-4.1",
+      modelName: "GPT-4.1",
+    },
+  },
+  {
+    label: "OpenAI Responses",
+    draft: {
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      api: "openai-responses",
       modelId: "gpt-4.1",
       modelName: "GPT-4.1",
     },
@@ -91,6 +121,34 @@ const QUICK_PRESETS: Array<{ label: string; draft: Partial<Draft> }> = [
   },
 ];
 
+function displayProxy(proxy: string): string {
+  try {
+    const url = new URL(proxy);
+    if (url.password) url.password = "****";
+    let text = url.toString();
+    if (text.endsWith("/") && url.pathname === "/") text = text.slice(0, -1);
+    return text;
+  } catch {
+    return proxy;
+  }
+}
+
+function parseModelIds(text: string): string[] {
+  return [...new Set(text.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean))];
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
+function visibleRemoteModels(picker: FetchPicker): RemoteModel[] {
+  const q = picker.query.trim().toLowerCase();
+  if (!q) return picker.models;
+  return picker.models.filter((model) => {
+    return model.id.toLowerCase().includes(q) || (model.ownedBy ?? "").toLowerCase().includes(q);
+  });
+}
+
 /**
  * 供应商管理面板组件
  * @param activeProvider - 当前激活的供应商
@@ -109,6 +167,8 @@ export function ProvidersPanel(props: {
   const [keyDialog, setKeyDialog] = useState<string | undefined>(); // API 密钥弹窗的目标供应商
   const [keyDraft, setKeyDraft] = useState("");           // API 密钥输入草稿
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT); // 表单草稿
+  const [addModelsMode, setAddModelsMode] = useState(false);
+  const [fetchPicker, setFetchPicker] = useState<FetchPicker | undefined>();
   const [busy, setBusy] = useState(false);                 // 操作进行中标记
 
 /** 刷新 models.json 配置 */
@@ -123,6 +183,7 @@ export function ProvidersPanel(props: {
 
 /** 打开添加弹窗，可选预填预设 */
   function openCreate(preset?: Partial<Draft>) {
+    setAddModelsMode(false);
     setDraft({ ...EMPTY_DRAFT, ...preset });
     setDialogOpen(true);
   }
@@ -130,15 +191,31 @@ export function ProvidersPanel(props: {
   /** 打开编辑弹窗，预填现有供应商和模型信息 */
   function openEdit(provider: ModelsJsonProviderView, modelId: string) {
     const model = provider.models.find((m) => m.id === modelId);
+    setAddModelsMode(false);
     setDraft({
       provider: provider.provider,
       baseUrl: provider.baseUrl ?? "",
-      api: provider.api === "anthropic-messages" ? "anthropic-messages" : "openai-completions",
+      api: coerceApiKind(provider.api),
       modelId: model?.id ?? modelId,
       modelName: model?.name ?? "",
       apiKey: "",
+      proxy: provider.proxy ?? "",
+      modelIdsText: "",
       previousProvider: provider.provider,
       previousModelId: modelId,
+    });
+    setDialogOpen(true);
+  }
+
+  function openAddModels(provider: ModelsJsonProviderView) {
+    setAddModelsMode(true);
+    setDraft({
+      ...EMPTY_DRAFT,
+      provider: provider.provider,
+      baseUrl: provider.baseUrl ?? "",
+      api: coerceApiKind(provider.api),
+      proxy: provider.proxy ?? "",
+      previousProvider: provider.provider,
     });
     setDialogOpen(true);
   }
@@ -148,6 +225,19 @@ export function ProvidersPanel(props: {
     e?.preventDefault();
     setBusy(true);
     try {
+      if (addModelsMode) {
+        const models = parseModelIds(draft.modelIdsText).map((id) => ({ id }));
+        const next = await rpc<ModelsJsonConfigView>("addProviderModels", {
+          provider: draft.provider.trim(),
+          models,
+        });
+        setConfig(next);
+        setDialogOpen(false);
+        setAddModelsMode(false);
+        props.onToast(`已向 ${draft.provider} 添加 ${models.length} 个模型`, "info");
+        props.onActiveChanged();
+        return;
+      }
       const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
         provider: draft.provider.trim(),
         baseUrl: draft.baseUrl.trim(),
@@ -155,12 +245,124 @@ export function ProvidersPanel(props: {
         modelId: draft.modelId.trim(),
         modelName: draft.modelName.trim() || undefined,
         apiKey: draft.apiKey.trim() || undefined,
+        proxy: draft.proxy,
         previousProvider: draft.previousProvider,
         previousModelId: draft.previousModelId,
       });
       setConfig(next);
       setDialogOpen(false);
       props.onToast("供应商已保存", "info");
+      props.onActiveChanged();
+    } catch (err) {
+      props.onToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function fetchModelsForProvider(provider: ModelsJsonProviderView, apiKey?: string) {
+    if (provider.api === "anthropic-messages") {
+      props.onToast("Anthropic 不支持 OpenAI /models 列表接口", "warning");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await rpc<{ models?: RemoteModel[] } | RemoteModel[]>("fetchRemoteModels", {
+        provider: provider.provider,
+        apiKey: apiKey?.trim() || undefined,
+      });
+      const models = Array.isArray(result) ? result : result.models ?? [];
+      if (!models.length) {
+        props.onToast("模型列表为空", "warning");
+        return;
+      }
+      setFetchPicker({
+        provider: provider.provider,
+        models,
+        selected: [],
+        query: "",
+        existing: provider.models.map((m) => m.id),
+      });
+    } catch (err) {
+      props.onToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function fetchModelsFromDraft() {
+    setBusy(true);
+    try {
+      const result = await rpc<{ models?: RemoteModel[] } | RemoteModel[]>("fetchRemoteModels", {
+        provider: draft.previousProvider || (addModelsMode ? draft.provider : undefined),
+        baseUrl: draft.baseUrl.trim() || undefined,
+        apiKey: draft.apiKey.trim() || undefined,
+        proxy: draft.proxy.trim() || undefined,
+      });
+      const models = Array.isArray(result) ? result : result.models ?? [];
+      if (!models.length) {
+        props.onToast("模型列表为空", "warning");
+        return;
+      }
+      const existing = config?.providers.find(
+        (p) => p.provider === (draft.previousProvider || draft.provider.trim()),
+      );
+      setFetchPicker({
+        provider: draft.previousProvider || draft.provider.trim(),
+        models,
+        selected: [],
+        query: "",
+        existing: existing?.models.map((m) => m.id) ?? [],
+      });
+    } catch (err) {
+      props.onToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importFetchedModels() {
+    if (!fetchPicker) return;
+    const models = fetchPicker.models
+      .filter((m) => fetchPicker.selected.includes(m.id) && !fetchPicker.existing.includes(m.id))
+      .map((m) => ({ id: m.id, name: m.name }));
+    if (!models.length) {
+      props.onToast("请选择要导入的新模型", "warning");
+      return;
+    }
+    setBusy(true);
+    try {
+      let next: ModelsJsonConfigView;
+      const exists = config?.providers.some((p) => p.provider === fetchPicker.provider);
+      if (!exists) {
+        const first = models[0]!;
+        next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
+          provider: fetchPicker.provider || draft.provider.trim(),
+          baseUrl: draft.baseUrl.trim(),
+          api: draft.api,
+          modelId: first.id,
+          modelName: first.name,
+          apiKey: draft.apiKey.trim() || undefined,
+          proxy: draft.proxy,
+        });
+        const rest = models.slice(1);
+        if (rest.length) {
+          next = await rpc<ModelsJsonConfigView>("addProviderModels", {
+            provider: fetchPicker.provider || draft.provider.trim(),
+            models: rest,
+          });
+        }
+      } else {
+        next = await rpc<ModelsJsonConfigView>("addProviderModels", {
+          provider: fetchPicker.provider,
+          models,
+        });
+      }
+      setConfig(next);
+      setFetchPicker(undefined);
+      setDialogOpen(false);
+      setAddModelsMode(false);
+      props.onToast(`已导入 ${models.length} 个模型`, "info");
       props.onActiveChanged();
     } catch (err) {
       props.onToast(err instanceof Error ? err.message : String(err), "error");
@@ -272,128 +474,266 @@ export function ProvidersPanel(props: {
         </div>
       </div>
       {config?.error ? <p className="hint" style={{ color: "var(--danger)" }}>{config.error}</p> : null}
-      <ul className="inv-list provider-list">
-        {(config?.providers ?? []).length === 0 ? (
-          <li className="hint">暂无供应商。可用上方快捷按钮添加 OpenAI / Anthropic / Ollama，或自定义兼容端点。</li>
-        ) : (
-          (config?.providers ?? []).map((provider) => (
-            <li key={provider.provider}>
-              <div className="pkg-row">
-                <div>
+      {(config?.providers ?? []).length === 0 ? (
+        <p className="hint">暂无供应商。可用上方快捷按钮添加 OpenAI / Anthropic / Ollama，或自定义兼容端点。</p>
+      ) : (
+        <div className="provider-groups">
+          {(config?.providers ?? []).map((provider) => (
+            <section key={provider.provider} className="provider-group">
+              <header className="provider-group__head">
+                <div className="provider-group__id">
                   <strong>{provider.provider}</strong>
                   <span className={`auth-badge ${provider.hasApiKeyField ? "ok" : "miss"}`}>
                     {provider.hasApiKeyField ? "已配置密钥" : "缺少密钥"}
                   </span>
-                  <div className="hint">
-                    {provider.api || "openai-completions"} · {provider.baseUrl || "—"} · {provider.models.length} 个模型
-                  </div>
                 </div>
+                <p className="provider-group__meta">
+                  {provider.api || "openai-completions"} · {provider.baseUrl || "—"} · {provider.models.length} 个模型
+                  {provider.proxy ? ` · 代理 ${displayProxy(provider.proxy)}` : ""}
+                </p>
                 <div className="row-actions">
-                  <Button variant="secondary" size="sm" title="设置 API 密钥" disabled={busy} onClick={() => {
+                  <Button variant="ghost" size="sm" title="设置 API 密钥" disabled={busy} onClick={() => {
                     setKeyDialog(provider.provider);
                     setKeyDraft("");
                   }}>
                     <KeyRound size={14} />
                   </Button>
+                  <Button variant="ghost" size="sm" title="添加模型" disabled={busy} onClick={() => openAddModels(provider)}>
+                    <Plus size={14} />
+                  </Button>
+                  {provider.api !== "anthropic-messages" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="从 OpenAI /models 接口拉取"
+                      disabled={busy}
+                      onClick={() => void fetchModelsForProvider(provider)}
+                    >
+                      <CloudDownload size={14} />
+                    </Button>
+                  ) : null}
                   {provider.hasApiKeyField ? (
-                    <Button variant="secondary" size="sm" disabled={busy} onClick={() => void clearKey(provider.provider)}>
+                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => void clearKey(provider.provider)}>
                       清除密钥
                     </Button>
                   ) : null}
-                  <Button variant="secondary" size="sm" disabled={busy} onClick={() => void removeProvider(provider.provider)}>
+                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => void removeProvider(provider.provider)}>
                     <Trash2 size={14} />
                   </Button>
                 </div>
-              </div>
-              <ul className="model-sublist">
-                {provider.models.map((model) => {
-                  const active =
-                    props.activeProvider === provider.provider && props.activeModel === model.id;
-                  return (
-                    <li key={model.id} className={active ? "active" : ""}>
-                      <span>
-                        {model.name || model.id}
-                        <span className="hint"> · {model.id}</span>
-                        {active ? <span className="auth-badge ok">当前</span> : null}
-                      </span>
-                      <span className="row-actions">
-                        <Button variant="secondary" size="sm" disabled={busy || active} onClick={() => void useModel(provider.provider, model.id)}>
-                          使用
-                        </Button>
-                        <Button variant="secondary" size="sm" disabled={busy} onClick={() => openEdit(provider, model.id)}>
-                          <Pencil size={14} />
-                        </Button>
-                        <Button variant="secondary" size="sm" disabled={busy} onClick={() => void removeModel(provider.provider, model.id)}>
-                          <Trash2 size={14} />
-                        </Button>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </li>
-          ))
-        )}
-      </ul>
+              </header>
+              {provider.models.map((model) => {
+                const active =
+                  props.activeProvider === provider.provider && props.activeModel === model.id;
+                return (
+                  <div key={model.id} className={`model-row${active ? " is-active" : ""}`}>
+                    <div className="model-row__name">
+                      <span>{model.name || model.id}</span>
+                      {model.name && model.name !== model.id ? <span className="hint">{model.id}</span> : null}
+                      {active ? <span className="auth-badge ok">当前</span> : null}
+                    </div>
+                    <div className="row-actions">
+                      <Button variant="ghost" size="sm" disabled={busy || active} onClick={() => void useModel(provider.provider, model.id)}>
+                        使用
+                      </Button>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => openEdit(provider, model.id)}>
+                        <Pencil size={14} />
+                      </Button>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => void removeModel(provider.provider, model.id)}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+        </div>
+      )}
 
       {dialogOpen ? (
         <div className="modal" data-aluka-drag="no-drag">
           <form className="modal-card" onSubmit={(e) => void saveDraft(e)}>
-            <h3>{draft.previousModelId ? "编辑模型" : "添加供应商 / 模型"}</h3>
-            <Input
-              label="供应商 ID"
-              hint="用于标识供应商，建议小写英文，如 openai、ollama。"
-              required
-              value={draft.provider}
-              onChange={(provider) => setDraft((d) => ({ ...d, provider }))}
-              placeholder="openai / anthropic / ollama / my-gateway"
-            />
-            <Select
-              label="API 类型"
-              hint="OpenAI 兼容接口或 Anthropic Messages。"
-              value={draft.api}
-              options={[
-                { value: "openai-completions", label: "openai-completions（OpenAI 兼容）" },
-                { value: "anthropic-messages", label: "anthropic-messages" },
-              ]}
-              onChange={(api) => setDraft((d) => ({ ...d, api: api as ApiKind }))}
-            />
-            <Input
-              label="Base URL"
-              hint="接口根地址，例如 https://api.openai.com/v1。"
-              required
-              value={draft.baseUrl}
-              onChange={(baseUrl) => setDraft((d) => ({ ...d, baseUrl }))}
-              placeholder="https://api.openai.com/v1"
-            />
-            <Input
-              label="模型 ID"
-              hint="请求时发送的 model 字段。"
-              required
-              value={draft.modelId}
-              onChange={(modelId) => setDraft((d) => ({ ...d, modelId }))}
-              placeholder="gpt-4.1"
-            />
-            <Input
-              label="显示名称"
-              hint="仅用于界面展示，可留空。"
-              value={draft.modelName}
-              onChange={(modelName) => setDraft((d) => ({ ...d, modelName }))}
-              placeholder="可选"
-            />
-            <Input
-              label="API 密钥"
-              hint="保存在本地 models.json。留空则不改动已有密钥。"
-              type="password"
-              value={draft.apiKey}
-              onChange={(apiKey) => setDraft((d) => ({ ...d, apiKey }))}
-              placeholder={draft.previousModelId ? "留空则保留原密钥" : "可选，稍后也可单独设置"}
-            />
+            <h3>
+              {addModelsMode
+                ? `添加模型 · ${draft.provider}`
+                : draft.previousModelId
+                  ? "编辑模型"
+                  : "添加供应商 / 模型"}
+            </h3>
+            {addModelsMode ? null : (
+              <>
+                <Input
+                  label="供应商 ID"
+                  hint="用于标识供应商，建议小写英文，如 openai、ollama。"
+                  required
+                  value={draft.provider}
+                  onChange={(provider) => setDraft((d) => ({ ...d, provider }))}
+                  placeholder="openai / anthropic / ollama / my-gateway"
+                />
+                <Select
+                  label="API 类型"
+                  hint="Chat Completions（/chat/completions）、Responses（/responses）或 Anthropic Messages。部分新模型 / 网关只支持 Responses。"
+                  value={draft.api}
+                  options={[
+                    { value: "openai-completions", label: "openai-completions（Chat Completions）" },
+                    { value: "openai-responses", label: "openai-responses（Responses）" },
+                    { value: "anthropic-messages", label: "anthropic-messages" },
+                  ]}
+                  onChange={(api) => setDraft((d) => ({ ...d, api: api as ApiKind }))}
+                />
+                <Input
+                  label="Base URL"
+                  hint="接口根地址，例如 https://api.openai.com/v1。"
+                  required
+                  value={draft.baseUrl}
+                  onChange={(baseUrl) => setDraft((d) => ({ ...d, baseUrl }))}
+                  placeholder="https://api.openai.com/v1"
+                />
+                <Input
+                  label="网络代理"
+                  hint="仅该供应商生效。支持 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，也可只填 host:port。留空则直连。"
+                  value={draft.proxy}
+                  onChange={(proxy) => setDraft((d) => ({ ...d, proxy }))}
+                  placeholder="http://127.0.0.1:7890"
+                />
+              </>
+            )}
+            {addModelsMode ? (
+              <Textarea
+                label="模型 ID"
+                hint="每行一个，也可用逗号分隔。可先点「从接口拉取」。"
+                required
+                rows={8}
+                value={draft.modelIdsText}
+                onChange={(modelIdsText) => setDraft((d) => ({ ...d, modelIdsText }))}
+                placeholder={"gpt-4.1\ngpt-4o-mini"}
+              />
+            ) : (
+              <>
+                <Input
+                  label="模型 ID"
+                  hint="请求时发送的 model 字段。"
+                  required
+                  value={draft.modelId}
+                  onChange={(modelId) => setDraft((d) => ({ ...d, modelId }))}
+                  placeholder="gpt-4.1"
+                />
+                <Input
+                  label="显示名称"
+                  hint="仅用于界面展示，可留空。"
+                  value={draft.modelName}
+                  onChange={(modelName) => setDraft((d) => ({ ...d, modelName }))}
+                  placeholder="可选"
+                />
+              </>
+            )}
+            {addModelsMode ? null : (
+              <Input
+                label="API 密钥"
+                hint="保存在本地 models.json。留空则不改动已有密钥。"
+                type="password"
+                value={draft.apiKey}
+                onChange={(apiKey) => setDraft((d) => ({ ...d, apiKey }))}
+                placeholder={draft.previousModelId ? "留空则保留原密钥" : "可选，稍后也可单独设置"}
+              />
+            )}
             <div className="modal-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => setDialogOpen(false)}>取消</Button>
+              {draft.api !== "anthropic-messages" ? (
+                <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
+                  <CloudDownload size={14} /> 从接口拉取
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => {
+                  setDialogOpen(false);
+                  setAddModelsMode(false);
+                }}
+              >
+                取消
+              </Button>
               <Button type="submit" disabled={busy}>保存</Button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {fetchPicker ? (
+        <div className="modal" data-aluka-drag="no-drag">
+          <div className="modal-card model-pick-card">
+            <h3>选择要导入的模型</h3>
+            <p className="modal-body">
+              来自 OpenAI 兼容 GET /models，已存在的会标为已添加。
+              显示 {visibleRemoteModels(fetchPicker).length} / 共 {fetchPicker.models.length} 个。
+            </p>
+            <Input
+              label="筛选"
+              value={fetchPicker.query}
+              onChange={(query) => setFetchPicker((p) => (p ? { ...p, query } : p))}
+              placeholder="muse-spark、glm、deepseek"
+            />
+            <div className="model-pick-toolbar">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const visible = visibleRemoteModels(fetchPicker);
+                  setFetchPicker((p) => p ? { ...p, selected: uniqueIds([...p.selected, ...visible.map((m) => m.id)]) } : p);
+                }}
+              >
+                全选可见
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setFetchPicker((p) => p ? { ...p, selected: [] } : p)}>
+                清空
+              </Button>
+            </div>
+            <ul className="model-pick-list">
+              {visibleRemoteModels(fetchPicker).length === 0 ? (
+                <li className="model-pick-empty">
+                  {fetchPicker.models.length === 0
+                    ? "未拉取到模型"
+                    : `没有匹配「${fetchPicker.query}」的模型`}
+                </li>
+              ) : visibleRemoteModels(fetchPicker).map((model) => {
+                const exists = fetchPicker.existing.includes(model.id);
+                const checked = exists || fetchPicker.selected.includes(model.id);
+                return (
+                  <li key={model.id}>
+                    <label className={exists ? "is-existing" : ""}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={exists || busy}
+                        onChange={() => {
+                          setFetchPicker((p) => {
+                            if (!p) return p;
+                            const on = p.selected.includes(model.id);
+                            return {
+                              ...p,
+                              selected: on ? p.selected.filter((id) => id !== model.id) : [...p.selected, model.id],
+                            };
+                          });
+                        }}
+                      />
+                      <span>
+                        {model.id}
+                        {model.ownedBy ? <span className="hint"> · {model.ownedBy}</span> : null}
+                        {exists ? <span className="auth-badge ok">已添加</span> : null}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="modal-actions">
+              <Button variant="secondary" disabled={busy} onClick={() => setFetchPicker(undefined)}>取消</Button>
+              <Button disabled={busy} onClick={() => void importFetchedModels()}>
+                导入选中
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
 

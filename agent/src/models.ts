@@ -50,7 +50,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     provider: "openai",
     defaultModel: "gpt-4.1",
     defaultBaseUrl: "http://127.0.0.1:11434/v1",
-    hint: "任意兼容 /v1/chat/completions 的端点（Ollama、DeepSeek、自建网关等）",
+    hint: "任意兼容 /v1/chat/completions 或 /v1/responses 的端点（Ollama、DeepSeek、自建网关等）",
   },
 ];
 
@@ -65,7 +65,7 @@ export function apiForProvider(provider: string): Api {
  * 配置优先级：参数覆盖 > 环境变量 > 默认值
  * - 提供商：ALUKA_PROVIDER 环境变量，默认 "openai"
  * - 模型 ID：按提供商选择不同的默认模型
- * - API 类型：根据提供商自动选择 (openai-completions / anthropic-messages)
+ * - API 类型：根据提供商自动选择 (openai-completions / anthropic-messages)；OpenAI Responses 需在 models.json 显式指定
  */
 export function defaultModel(overrides: Partial<Model> = {}): Model {
   const provider = (overrides.provider ?? process.env.ALUKA_PROVIDER ?? "openai") as string;
@@ -186,6 +186,7 @@ function modelFromLookup(
     provider: found.provider,
     api: found.api,
     baseUrl: baseUrlOverride?.trim() || found.baseUrl,
+    proxy: found.proxy,
     contextWindow: found.contextWindow,
     maxTokens: found.maxTokens,
     reasoning: found.reasoning ?? false,

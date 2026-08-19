@@ -20,18 +20,24 @@ import {
   type ModelsJsonConfigView,
   type ModelOptionView,
   type UpsertCustomProviderInput,
+  type AddProviderModelsInput,
+  type RemoteModelView,
   type InstallNpmPackageOutcome,
   type SessionExportFormat,
   type SessionExportOutcome,
   type SessionShareOutcome,
   type SessionUsageView,
-} from "../../../../../aluka_pi/src/desktop/index.ts";
-import { VERSION } from "../../../../../aluka_pi/src/config.ts";
+  type OpenedSession,
+  type SessionHandle,
+  type WorkspaceView,
+  type SelectWorkspaceMode,
+} from "../../../../../agent/src/desktop/index.ts";
+import { VERSION } from "../../../../../agent/src/config.ts";
 import {
   PROVIDER_PRESETS,
   inferProviderPreset,
   type ProviderPresetId,
-} from "../../../../../aluka_pi/src/models.ts";
+} from "../../../../../agent/src/models.ts";
 import { checkForDesktopUpdate, type UpdateCheckResult } from "./update-check.ts";
 
 /** Host 事件发射器类型：用于向 UI 层推送运行时事件 */
@@ -52,12 +58,24 @@ export interface DesktopHost {
   patchSettings(patch: DesktopSettings): ReturnType<DesktopRuntime["getSettings"]> & { providerPreset: ProviderPresetId };
   /** 列出所有内置供应商预设 */
   listProviderPresets(): typeof PROVIDER_PRESETS;
-  /** 列出所有会话摘要 */
+  /** 列出所有会话摘要（当前工作区） */
   listSessions(): ReturnType<DesktopRuntime["listSessions"]>;
+  /** 按工作区分组的会话树 */
+  listWorkspaces(): WorkspaceView[];
+  /** 切换到指定工作区（latest 打开最近会话，new 建空会话） */
+  selectWorkspace(dir: string, mode?: SelectWorkspaceMode): OpenedSession;
+  /** 添加并切换到工作区 */
+  addWorkspace(dir: string, mode?: SelectWorkspaceMode): OpenedSession;
+  /** 生成临时工作区并切换 */
+  createTempWorkspace(mode?: SelectWorkspaceMode): OpenedSession;
+  /** 从列表移除工作区（不删磁盘文件） */
+  removeWorkspace(dir: string): { cwd: string; workspaces: WorkspaceView[] };
   /** 创建新会话 */
-  createSession(): ReturnType<DesktopRuntime["createSession"]>;
+  createSession(cwd?: string): SessionHandle;
   /** 打开指定会话并加载时间线 */
-  openSession(id: string): ReturnType<DesktopRuntime["openSession"]>;
+  openSession(id: string, cwd?: string): OpenedSession;
+  /** 删除会话；若删当前会话则切到最近一条或新建 */
+  deleteSession(id: string, cwd?: string): OpenedSession;
   /** 获取当前活跃会话的时间线 */
   getTimeline(): ReturnType<DesktopRuntime["getTimeline"]>;
   /** 获取当前活跃会话 ID */
@@ -86,6 +104,15 @@ export interface DesktopHost {
   getModelsJsonConfig(): ModelsJsonConfigView;
   /** 创建或更新自定义供应商与模型 */
   upsertCustomProvider(input: UpsertCustomProviderInput): ModelsJsonConfigView;
+  /** 向已有供应商批量追加模型 */
+  addProviderModels(input: AddProviderModelsInput): ModelsJsonConfigView;
+  /** 通过 OpenAI 兼容 GET /models 拉取远程模型列表 */
+  fetchRemoteModels(opts: {
+    provider?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    proxy?: string;
+  }): Promise<{ provider?: string; baseUrl: string; models: RemoteModelView[] }>;
   /** 删除指定供应商及其全部模型 */
   removeCustomProvider(provider: string): ModelsJsonConfigView;
   /** 删除指定模型 */
@@ -139,7 +166,6 @@ export async function createDesktopHost(opts: {
       // 将所有运行时事件（agent_start、text_delta、tool_start 等）转发到 UI
       opts.emit("runtime.event", event);
     },
-    cwd: process.cwd(),
     extraExtensionPaths: opts.extraExtensionPaths,
   });
 
@@ -162,8 +188,14 @@ export async function createDesktopHost(opts: {
     patchSettings: (patch) => withPreset(runtime.patchSettings(patch)),
     listProviderPresets: () => PROVIDER_PRESETS,
     listSessions: () => runtime.listSessions(),
-    createSession: () => runtime.createSession(),
-    openSession: (id) => runtime.openSession(id),
+    listWorkspaces: () => runtime.listWorkspaces(),
+    selectWorkspace: (dir, mode) => runtime.selectWorkspace(dir, mode),
+    addWorkspace: (dir, mode) => runtime.addWorkspace(dir, mode),
+    createTempWorkspace: (mode) => runtime.createTempWorkspace(mode),
+    removeWorkspace: (dir) => runtime.removeWorkspace(dir),
+    createSession: (cwd) => runtime.createSession(cwd ? { cwd } : undefined),
+    openSession: (id, cwd) => runtime.openSession(id, cwd),
+    deleteSession: (id, cwd) => runtime.deleteSession(id, cwd),
     getTimeline: () => runtime.getTimeline(),
     getActiveSessionId: () => runtime.getActiveSessionId(),
     isBusy: () => runtime.isBusy(),
@@ -191,6 +223,8 @@ export async function createDesktopHost(opts: {
     getModelsJsonPreview: () => runtime.getModelsJsonPreview(),
     getModelsJsonConfig: () => runtime.getModelsJsonConfig(),
     upsertCustomProvider: (input) => runtime.upsertCustomProvider(input),
+    addProviderModels: (input) => runtime.addProviderModels(input),
+    fetchRemoteModels: (opts) => runtime.fetchRemoteModels(opts),
     removeCustomProvider: (provider) => runtime.removeCustomProvider(provider),
     removeCustomModel: (provider, modelId) => runtime.removeCustomModel(provider, modelId),
     setProviderApiKey: (provider, apiKey) => runtime.setProviderApiKey(provider, apiKey),

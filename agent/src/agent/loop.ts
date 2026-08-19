@@ -41,14 +41,16 @@ export async function runAgentLoop(
   // 发送 Agent 生命周期事件
   await emit({ type: "agent_start" });
   await emit({ type: "turn_start", turnIndex: 0, timestamp: Date.now() });
-  for (const prompt of prompts) {
-    await emit({ type: "message_start", message: prompt });
-    await emit({ type: "message_end", message: prompt });
+  try {
+    for (const prompt of prompts) {
+      await emit({ type: "message_start", message: prompt });
+      await emit({ type: "message_end", message: prompt });
+    }
+    await loop(current, produced, config, emit, signal, streamFn);
+  } finally {
+    // 出错也要发 agent_end，否则桌面壳会一直认为 Agent 忙碌
+    await emit({ type: "agent_end", messages: produced });
   }
-
-  // 进入迭代循环
-  await loop(current, produced, config, emit, signal, streamFn);
-  await emit({ type: "agent_end", messages: produced });
   return produced;
 }
 

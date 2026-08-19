@@ -17,7 +17,9 @@ import type {
   TextContent,
 } from "./types.ts";
 import { typeboxToJsonSchema } from "./schema.ts";
+import { logProviderCall } from "./request-log.ts";
 import { streamOpenAI } from "./openai.ts";
+import { providerFetch } from "./provider-fetch.ts";
 
 /**
  * Anthropic 流式调用入口
@@ -78,8 +80,9 @@ function streamAnthropicNative(
       const replaced = await Promise.resolve(maybeReplaced);
       const body = replaced ?? payload;
 
-      // 发送请求
-      const response = await fetch(`${trimSlash(baseUrl)}/v1/messages`, {
+      const url = `${trimSlash(baseUrl)}/v1/messages`;
+      const requestBody = JSON.stringify(body);
+      const response = await providerFetch(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -87,9 +90,9 @@ function streamAnthropicNative(
           "anthropic-version": "2023-06-01",
           ...(model.headers ?? {}),
         },
-        body: JSON.stringify(body),
+        body: requestBody,
         signal: options.signal,
-      });
+      }, model.proxy);
 
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
@@ -98,8 +101,26 @@ function streamAnthropicNative(
       options.onResponse?.(response.status, responseHeaders);
 
       if (!response.ok) {
-        throw new Error(`Anthropic request failed (${response.status}): ${(await response.text()).slice(0, 2000)}`);
+        const text = await response.text();
+        logProviderCall({
+          api: "anthropic-messages",
+          url,
+          model: model.id,
+          provider: model.provider,
+          requestBody,
+          status: response.status,
+          responseBody: text,
+        });
+        throw new Error(`Anthropic request failed (${response.status}): ${text.slice(0, 2000)}`);
       }
+      logProviderCall({
+        api: "anthropic-messages",
+        url,
+        model: model.id,
+        provider: model.provider,
+        requestBody,
+        status: response.status,
+      });
 
       // 解析 JSON 响应
       const json = (await response.json()) as {
