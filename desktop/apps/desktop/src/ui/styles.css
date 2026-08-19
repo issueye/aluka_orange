@@ -1784,6 +1784,7 @@ select {
 }
 
 .settings-row-copy {
+  width: 100%;
   min-width: 0;
   flex: 1;
 }
