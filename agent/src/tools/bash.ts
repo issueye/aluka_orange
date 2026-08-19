@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import { Type } from "typebox";
 import { defineTool } from "../extensions/types.ts";
+import { killProcessTree, trackChild } from "../process-children.ts";
 
 export const bashTool = defineTool({
   name: "bash",
@@ -55,7 +56,7 @@ function runShell(
     // 根据平台选择 Shell
     const shell = os.platform() === "win32" ? "cmd.exe" : "bash";
     const args = os.platform() === "win32" ? ["/d", "/s", "/c", command] : ["-lc", command];
-    const child = spawn(shell, args, { cwd, env: process.env, windowsHide: true });
+    const child = trackChild(spawn(shell, args, { cwd, env: process.env, windowsHide: true }));
     let stdout = "";
     let stderr = "";
 
@@ -74,10 +75,10 @@ function runShell(
     });
 
     // 超时后发送 SIGTERM 终止进程
-    const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    const timer = setTimeout(() => killProcessTree(child.pid), timeoutMs);
 
     // 中止信号监听
-    const onAbort = () => child.kill("SIGTERM");
+    const onAbort = () => killProcessTree(child.pid);
     signal?.addEventListener("abort", onAbort);
 
     child.on("close", (code) => {

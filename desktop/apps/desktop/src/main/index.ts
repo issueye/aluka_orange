@@ -1,7 +1,8 @@
 /**
  * Aluka Desktop 主进程（Phase 4）
  *
- * - 无边框窗口 + 托盘（关闭按钮隐藏到托盘，托盘「退出」才 quit）
+ * - 无边框窗口 + 托盘（关闭按钮退出；托盘可再开窗口）
+ * - 退出前中止任务、杀掉子进程，避免残留
  * - registerRPC 不 await Promise：异步用 fire-and-forget + win.emit
  */
 import { app, createWindow, createTray, setAssetDir, globalShortcut } from "aluka:gui";
@@ -46,9 +47,9 @@ const trayOpts: {
 } = {
   tooltip: "Aluka Desktop",
   menu: [
-    { label: "Show Aluka Desktop", click: () => win.show() },
+    { label: "显示主窗口", click: () => win.show() },
     { type: "separator" },
-    { label: "Quit", click: () => app.quit() },
+    { label: "退出", click: () => shutdown() },
   ],
 };
 if (fs.existsSync(iconPath)) {
@@ -176,6 +177,50 @@ app.registerRPC("sendPrompt", (params: { text?: string }) => {
   return { started: true };
 });
 app.registerRPC("abortPrompt", () => requireHost().abortPrompt());
+function shutdown(): void {
+  try {
+    host?.dispose();
+  } catch (err) {
+    console.warn("[aluka-desktop] dispose failed", err);
+  }
+  try {
+    globalShortcut.unregisterAll();
+  } catch (err) {
+    console.warn("[aluka-desktop] unregister shortcuts failed", err);
+  }
+  try {
+    tray.destroy();
+  } catch (err) {
+    console.warn("[aluka-desktop] destroy tray failed", err);
+  }
+  try {
+    app.quit();
+  } catch (err) {
+    console.warn("[aluka-desktop] app.quit failed", err);
+  }
+  setTimeout(() => {
+    try {
+      process.exit(0);
+    } catch {
+      /* ignore */
+    }
+  }, 400);
+}
+
+const guiApp = app as typeof app & { on?: (event: string, handler: () => void) => void };
+guiApp.on?.("before-quit", () => {
+  try {
+    host?.dispose();
+  } catch {
+    /* ignore */
+  }
+  try {
+    globalShortcut.unregisterAll();
+  } catch {
+    /* ignore */
+  }
+});
+
 app.registerRPC("hideToTray", () => {
   win.hide();
   return { ok: true };
@@ -185,7 +230,7 @@ app.registerRPC("showWindow", () => {
   return { ok: true };
 });
 app.registerRPC("quitApp", () => {
-  app.quit();
+  shutdown();
   return { ok: true };
 });
 app.registerRPC("getModelsJsonPreview", () => requireHost().getModelsJsonPreview());

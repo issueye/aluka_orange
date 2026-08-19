@@ -426,7 +426,27 @@ select {
 
 .thread-actions {
   display: flex;
+  align-items: center;
   gap: 2px;
+  padding-right: 6px;
+}
+
+.header-action {
+  width: 30px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-action:hover {
+  background: var(--hover-fill);
+  color: var(--foreground);
 }
 
 .composer-workspace {
@@ -690,12 +710,23 @@ select {
   background: var(--background);
 }
 
+.chat-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-pane.is-hidden {
+  display: none;
+}
+
 .thread-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: var(--titlebar-h);
-  padding: 0 8px 0 16px;
+  padding: 0 0 0 16px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -719,6 +750,7 @@ select {
 .ws-filter,
 .ws-tree,
 .thread-actions,
+.header-action,
 .sidebar-foot,
 .composer-wrap,
 .settings-split,
@@ -740,17 +772,21 @@ select {
 
 .window-controls {
   display: flex;
-  gap: 2px;
+  align-self: stretch;
+  margin-left: 4px;
 }
 
 .window-controls button {
-  width: 36px;
-  height: 28px;
+  width: 46px;
+  height: 100%;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 

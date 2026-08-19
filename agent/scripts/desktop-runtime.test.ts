@@ -409,9 +409,21 @@ describe("desktop workspaces", () => {
     assert.ok(groupA && groupA.sessions.some((s) => s.id === createdA.id));
     assert.ok(groupB && groupB.sessions.some((s) => s.id === createdB.id));
 
+    fs.appendFileSync(
+      createdA.file,
+      `${JSON.stringify({
+        id: "t1",
+        type: "turn",
+        timestamp: Date.now(),
+        messages: [
+          { role: "assistant", content: [{ type: "text", text: "analysis result from A" }] },
+        ],
+      })}\n`,
+    );
     const back = rt.openSession(createdA.id, wsA);
     assert.ok(samePath(back.cwd, wsA));
     assert.ok(back.timeline.some((item) => item.text.includes("hello from A")));
+    assert.ok(back.timeline.some((item) => item.text.includes("analysis result from A")));
 
     const afterDelete = rt.deleteSession(createdA.id, wsA);
     assert.notEqual(afterDelete.id, createdA.id);

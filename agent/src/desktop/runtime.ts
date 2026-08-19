@@ -14,6 +14,7 @@ import { ExtensionRunner } from "../extensions/runner.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { resolveRuntimeApiKey, resolveRuntimeModel } from "../models.ts";
 import { SessionManager, type SessionSummary } from "../session/manager.ts";
+import { killTrackedChildren } from "../process-children.ts";
 import { loadSkills, type Skill } from "../skills/index.ts";
 import { buildSystemPrompt, toolSnippets } from "../system-prompt.ts";
 import { builtinTools } from "../tools/index.ts";
@@ -179,6 +180,8 @@ export interface DesktopRuntime {
   isBusy(): boolean;
   prompt(text: string): Promise<void>;
   abort(): void;
+  /** 退出前中止请求并杀掉跟踪的子进程 */
+  dispose(): void;
   listExtensions(): ExtensionInventory;
   listSkills(): SkillListItem[];
   respondExtensionUi(response: ExtensionUiResponse): void;
@@ -769,6 +772,11 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     },
     abort() {
       controller?.abort();
+      killTrackedChildren();
+    },
+    dispose() {
+      controller?.abort();
+      killTrackedChildren();
     },
     listExtensions() {
       return {

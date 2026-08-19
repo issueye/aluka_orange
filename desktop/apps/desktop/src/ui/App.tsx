@@ -62,6 +62,25 @@ function pathsEqual(a?: string, b?: string): boolean {
   return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
 }
 
+function sessionKey(cwd?: string, id?: string): string {
+  if (!id) return "";
+  return `${(cwd ?? "").replace(/\\/g, "/").toLowerCase()}::${id}`;
+}
+
+function readTimelinePayload(raw: unknown): TimelineItem[] {
+  if (Array.isArray(raw)) return raw as TimelineItem[];
+  if (raw && typeof raw === "object") {
+    const rec = raw as { items?: unknown; timeline?: unknown };
+    if (Array.isArray(rec.items)) return rec.items as TimelineItem[];
+    if (Array.isArray(rec.timeline)) return rec.timeline as TimelineItem[];
+  }
+  return [];
+}
+
+function preferTimeline(primary: TimelineItem[], fallback: TimelineItem[]): TimelineItem[] {
+  return primary.length >= fallback.length ? primary : fallback;
+}
+
 /** 设置视图：当前用户配置 */
 type SettingsView = {
   model?: string;
@@ -208,6 +227,9 @@ export function App() {
   const [modalInput, setModalInput] = useState("");             // 弹窗输入内容
   const toastSeq = useRef(0);                                    // Toast 序列号
   const timelineRef = useRef<HTMLDivElement>(null);              // 时间线容器引用（用于自动滚动）
+  const timelineCache = useRef<Record<string, TimelineItem[]>>({});
+  const sessionRef = useRef<{ cwd?: string; id?: string }>({});
+  const streamingRef = useRef("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("aluka.sidebarCollapsed") === "1";
@@ -298,18 +320,63 @@ export function App() {
   /**
    * 打开指定会话：加载时间线、切换到对话视图、刷新列表和用量
    */
+  const rememberTimeline = useCallback((cwd: string | undefined, id: string | undefined, items: TimelineItem[]) => {
+    const key = sessionKey(cwd, id);
+    if (key) timelineCache.current[key] = items;
+  }, []);
+
+  const fetchHostTimeline = useCallback(async (cwd?: string, id?: string) => {
+    try {
+      const raw = await rpc<unknown>("getTimeline");
+      return preferTimeline(readTimelinePayload(raw), timelineCache.current[sessionKey(cwd, id)] ?? []);
+    } catch {
+      return timelineCache.current[sessionKey(cwd, id)] ?? [];
+    }
+  }, []);
+
   const applyOpened = useCallback(
     async (opened: OpenedSession) => {
+      const leftover = streamingRef.current.trim();
+      if (leftover) {
+        const prevKey = sessionKey(sessionRef.current.cwd, sessionRef.current.id);
+        if (prevKey) {
+          const prev = timelineCache.current[prevKey] ?? [];
+          const last = prev[prev.length - 1];
+          if (!(last?.role === "assistant" && last.text === leftover)) {
+            timelineCache.current[prevKey] = [
+              ...prev,
+              { id: `a-${Date.now()}-park`, role: "assistant", text: leftover, timestamp: Date.now() },
+            ];
+          }
+        }
+      }
       setActiveId(opened.id);
-      setTimeline(opened.timeline ?? []);
+      setSettings((s) => ({ ...s, cwd: opened.cwd }));
+      sessionRef.current = { cwd: opened.cwd, id: opened.id };
+      const next = preferTimeline(
+        await fetchHostTimeline(opened.cwd, opened.id),
+        preferTimeline(opened.timeline ?? [], timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? []),
+      );
+      rememberTimeline(opened.cwd, opened.id, next);
+      setTimeline(next);
+      streamingRef.current = "";
       setStreaming("");
       setView("chat");
-      setSettings((s) => ({ ...s, cwd: opened.cwd }));
       await refreshSessions();
       await refreshUsage(opened.id);
     },
-    [refreshSessions, refreshUsage],
+    [fetchHostTimeline, rememberTimeline, refreshSessions, refreshUsage],
   );
+
+  const showChat = useCallback(async () => {
+    setView("chat");
+    const { cwd, id } = sessionRef.current;
+    const items = await fetchHostTimeline(cwd, id);
+    if (items.length) {
+      rememberTimeline(cwd, id, items);
+      setTimeline(items);
+    }
+  }, [fetchHostTimeline, rememberTimeline]);
 
   const openSession = useCallback(
     async (id: string, cwd?: string) => {
@@ -412,9 +479,11 @@ export function App() {
         const active = await rpc<{ id?: string; cwd?: string }>("getActiveSessionId");
         setActiveId(active?.id);
         if (active?.cwd) setSettings((s) => ({ ...s, cwd: active.cwd }));
+        sessionRef.current = { cwd: active?.cwd, id: active?.id };
         if (active?.id) {
-          const items = await rpc<TimelineItem[]>("getTimeline");
-          setTimeline(items ?? []);
+          const items = await fetchHostTimeline(active.cwd, active.id);
+          rememberTimeline(active.cwd, active.id, items);
+          setTimeline(items);
         }
         await refreshSessions();
         await loadSettings();
@@ -429,7 +498,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [loadSettings, refreshExtensions, refreshSessions, refreshUsage, toast]);
+  }, [fetchHostTimeline, loadSettings, rememberTimeline, refreshExtensions, refreshSessions, refreshUsage, toast]);
 
   /**
    * 运行时事件监听 Effect
@@ -437,6 +506,14 @@ export function App() {
    * extension_ui、usage、error 等事件。
    */
   useEffect(() => {
+    const commitTimeline = (updater: (prev: TimelineItem[]) => TimelineItem[]) => {
+      setTimeline((prev) => {
+        const next = updater(prev);
+        rememberTimeline(sessionRef.current.cwd, sessionRef.current.id, next);
+        return next;
+      });
+    };
+
     const onRuntime = (raw: unknown) => {
       const event = raw as {
         type: string;
@@ -459,33 +536,51 @@ export function App() {
       }
       if (event.type === "agent_end") {
         setBusy(false);
+        const leftover = streamingRef.current.trim();
+        streamingRef.current = "";
         setStreaming("");
+        if (leftover) {
+          commitTimeline((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && last.text === leftover) return prev;
+            return [
+              ...prev,
+              { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "assistant", text: leftover, timestamp: Date.now() },
+            ];
+          });
+        }
         void refreshSessions();
         return;
       }
       if (event.type === "text_delta" && event.text) {
-        setStreaming((prev) => prev + event.text!);
+        streamingRef.current += event.text;
+        setStreaming(streamingRef.current);
         return;
       }
       if (event.type === "message_end" && event.role === "user" && event.text != null) {
-        setTimeline((prev) => [
+        commitTimeline((prev) => [
           ...prev,
           { id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "user", text: event.text!, timestamp: Date.now() },
         ]);
         return;
       }
       if (event.type === "message_end" && event.role === "assistant" && event.text != null) {
+        streamingRef.current = "";
         setStreaming("");
         if (!event.text.trim()) return;
-        setTimeline((prev) => [
-          ...prev,
-          { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "assistant", text: event.text!, timestamp: Date.now() },
-        ]);
+        commitTimeline((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && last.text === event.text) return prev;
+          return [
+            ...prev,
+            { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "assistant", text: event.text!, timestamp: Date.now() },
+          ];
+        });
         return;
       }
       if (event.type === "tool_start") {
         const toolCallId = event.toolCallId;
-        setTimeline((prev) => [
+        commitTimeline((prev) => [
           ...prev,
           {
             id: toolCallId || `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -503,7 +598,7 @@ export function App() {
       if (event.type === "tool_end") {
         const toolCallId = event.toolCallId;
         const resultText = String(event.resultText ?? "");
-        setTimeline((prev) => {
+        commitTimeline((prev) => {
           const index = toolCallId ? prev.findIndex((item) => item.toolCallId === toolCallId) : -1;
           const patch: Partial<TimelineItem> = {
             text: resultText,
@@ -546,7 +641,7 @@ export function App() {
         return;
       }
       if (event.type === "error" && event.message) {
-        setTimeline((prev) => [
+        commitTimeline((prev) => [
           ...prev,
           { id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "system", text: event.message!, timestamp: Date.now() },
         ]);
@@ -626,7 +721,7 @@ export function App() {
       bus.off("package.install", onPackageInstall);
       bus.off("update.check", onUpdateCheck);
     };
-  }, [idleStatus, loadSettings, refreshExtensions, refreshSessions, toast]);
+  }, [idleStatus, loadSettings, rememberTimeline, refreshExtensions, refreshSessions, toast]);
 
   /** 自动滚动时间线到底部（新消息出现时） */
   useEffect(() => {
@@ -748,7 +843,7 @@ export function App() {
           </div>
           {view === "chat" ? (
             <div className="thread-actions" data-aluka-drag="no-drag">
-              <button type="button" className="icon-btn" title="导出" onClick={() => void (async () => {
+              <button type="button" className="header-action" title="导出会话" onClick={() => void (async () => {
                 const result = await rpc<{ ok?: boolean; error?: string; path?: string; format?: string; bytes?: number }>(
                   "exportSession",
                   { format: "markdown", id: activeId },
@@ -759,29 +854,31 @@ export function App() {
                   setTimeout(() => setStatus(idleStatus), 2500);
                 } else toast(result?.error ?? "导出失败", "error");
               })()}>
-                <Download size={14} />
+                <Download size={15} />
               </button>
-              <button type="button" className="icon-btn" title="分享" onClick={() => {
+              <button type="button" className="header-action" title="分享会话" onClick={() => {
                 setStatus("正在通过 gh gist 分享…");
                 void rpc("shareSession", { id: activeId }).catch((err) => {
                   toast(err instanceof Error ? err.message : String(err), "error");
                   setStatus(idleStatus);
                 });
               }}>
-                <Share2 size={14} />
+                <Share2 size={15} />
               </button>
             </div>
           ) : null}
           <div className="window-controls" data-aluka-drag="no-drag">
             <button type="button" title="最小化" onClick={() => bridge().window.minimize()}><Minus size={14} /></button>
-            <button type="button" title="最大化" onClick={() => bridge().window.toggleMaximize()}><Square size={12} /></button>
-            <button type="button" className="close" title="隐藏到托盘" onClick={() => void rpc("hideToTray").catch(() => bridge().window.close())}>
+            <button type="button" title="最大化" onClick={() => bridge().window.toggleMaximize()}><Square size={11} /></button>
+            <button type="button" className="close" title="退出" onClick={() => void rpc("quitApp").catch(() => {
+              try { bridge().window.close(); } catch { /* ignore */ }
+            })}>
               <X size={14} />
             </button>
           </div>
         </header>
 
-        {view === "chat" && (
+        <div className={`chat-pane${view === "chat" ? "" : " is-hidden"}`}>
           <>
             <div className="timeline" ref={timelineRef}>
               {isEmptyChat ? (
@@ -947,7 +1044,7 @@ export function App() {
               <div className="usage-chip">{formatUsage(usage)}</div>
             </div>
           </>
-        )}
+        </div>
 
         {view === "settings" && (
           <div className="settings-split" data-aluka-drag="no-drag">
@@ -965,7 +1062,7 @@ export function App() {
               ))}
               <div className="settings-nav-foot">
                 <Button onClick={() => void saveGeneralSettings()}>保存</Button>
-                <Button variant="secondary" onClick={() => setView("chat")}>返回对话</Button>
+                <Button variant="secondary" onClick={() => void showChat()}>返回对话</Button>
               </div>
             </nav>
 
@@ -1173,7 +1270,7 @@ export function App() {
               </ul>
               <div style={{ display: "flex", gap: 8 }}>
                 <Button variant="secondary" onClick={() => void refreshExtensions()}>刷新</Button>
-                <Button variant="secondary" onClick={() => setView("chat")}>返回</Button>
+                <Button variant="secondary" onClick={() => void showChat()}>返回</Button>
               </div>
             </div>
           </div>

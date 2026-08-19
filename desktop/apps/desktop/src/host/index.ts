@@ -77,7 +77,7 @@ export interface DesktopHost {
   /** 删除会话；若删当前会话则切到最近一条或新建 */
   deleteSession(id: string, cwd?: string): OpenedSession;
   /** 获取当前活跃会话的时间线 */
-  getTimeline(): ReturnType<DesktopRuntime["getTimeline"]>;
+  getTimeline(): { items: ReturnType<DesktopRuntime["getTimeline"]> };
   /** 获取当前活跃会话 ID */
   getActiveSessionId(): string | undefined;
   /** 是否正在处理 Prompt */
@@ -86,6 +86,8 @@ export interface DesktopHost {
   sendPrompt(text: string): Promise<{ ok: true } | { ok: false; error: string }>;
   /** 中止当前正在进行的 Prompt */
   abortPrompt(): { ok: true };
+  /** 退出前中止任务并清理子进程 */
+  dispose(): void;
   /** 列出已加载的扩展及其提供的工具和命令 */
   listExtensions(): ReturnType<DesktopRuntime["listExtensions"]>;
   /** 列出可用技能 */
@@ -196,7 +198,7 @@ export async function createDesktopHost(opts: {
     createSession: (cwd) => runtime.createSession(cwd ? { cwd } : undefined),
     openSession: (id, cwd) => runtime.openSession(id, cwd),
     deleteSession: (id, cwd) => runtime.deleteSession(id, cwd),
-    getTimeline: () => runtime.getTimeline(),
+    getTimeline: () => ({ items: runtime.getTimeline() }),
     getActiveSessionId: () => runtime.getActiveSessionId(),
     isBusy: () => runtime.isBusy(),
     async sendPrompt(text) {
@@ -210,6 +212,9 @@ export async function createDesktopHost(opts: {
     abortPrompt() {
       runtime.abort();
       return { ok: true as const };
+    },
+    dispose() {
+      runtime.dispose();
     },
     listExtensions: () => runtime.listExtensions(),
     listSkills: () => runtime.listSkills(),
