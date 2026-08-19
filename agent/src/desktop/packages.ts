@@ -111,6 +111,15 @@ function runCommand(cmd: string, args: string[], cwd: string): Promise<{ code: n
   });
 }
 
+/** 供包市场模块复用的命令执行（同上，导出版本） */
+export const runPackageCommand = runCommand;
+
+/** node_modules 下包根目录（处理 @scope/name 两级结构） */
+export function installedPackageRoot(installDir: string, packageName: string): string {
+  const parts = packageName.startsWith("@") ? packageName.split("/") : [packageName];
+  return path.join(installDir, "node_modules", ...parts);
+}
+
 export async function installNpmPackageToAgent(opts: {
   agentDir: string;
   spec: string;

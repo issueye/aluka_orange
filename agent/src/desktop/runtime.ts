@@ -3,6 +3,7 @@
  * 供 Aluka Desktop 经 RPC 调用，不依赖 Electron。
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import type { ThinkingLevel } from "../ai/types.ts";
 import { runAgentLoop } from "../agent/loop.ts";
@@ -61,9 +62,18 @@ import {
 import type { Model } from "../ai/types.ts";
 import type { StreamFn } from "../ai/stream.ts";
 import {
+  agentNpmPackagesDir,
   installNpmPackageToAgent,
+  installedPackageRoot,
   type InstallNpmPackageOutcome,
 } from "./packages.ts";
+import {
+  removeNpmPackageFromAgent,
+  searchPiPackages,
+  listInstalledPiPackages,
+  type InstalledPiPackage,
+  type PiPackageRow,
+} from "./package-market.ts";
 import {
   exportSessionToDir,
   type SessionExportFormat,
@@ -227,6 +237,15 @@ export interface DesktopRuntime {
   selectModel(provider: string, modelId: string): ReturnType<typeof settingsView>;
   /** 用 aluka/npm install 把包装进 agent/npm-packages，并注册扩展入口 */
   installNpmPackage(spec: string): Promise<InstallNpmPackageOutcome>;
+  /** 查询 pi 生态插件市场（npm registry，keywords:pi-package），带已安装标记 */
+  searchPackages(params: { query?: string; limit?: number; from?: number }): Promise<{
+    packages: PiPackageRow[];
+    total: number;
+  }>;
+  /** 列出 npm-packages 下已安装的插件 */
+  listInstalledPackages(): InstalledPiPackage[];
+  /** 卸载 npm-packages 中的包并清理扩展记录（热重载） */
+  removeNpmPackage(packageName: string): Promise<import("./package-market.ts").RemovePackageOutcome>;
   /** 导出当前或指定会话到 agentDir/exports */
   exportSession(format?: SessionExportFormat, sessionId?: string): SessionExportOutcome;
   /** 经 gh gist 分享会话（secret gist）；需本机 gh 已登录 */
@@ -444,8 +463,8 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
 
   let session = SessionManager.create(sessionDir(), undefined, cwd);
   let history: AgentMessage[] = [];
-  let busy = false;
-  let controller: AbortController | undefined;
+  /** 正在运行的会话（sessionId → AbortController），支持多会话并行执行 */
+  const activeRuns = new Map<string, AbortController>();
   let systemPrompt = "";
 
   let runner = new ExtensionRunner(
@@ -776,7 +795,8 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       const targetCwd = workspacePath?.trim() ? ensureWorkspaceDir(workspacePath) : cwd;
       const dir = getSessionsDir(targetCwd, agentDir);
       const deletingActive = samePath(targetCwd, cwd) && session.id === id;
-      if (deletingActive && busy) controller?.abort();
+      // 删除正在运行的会话（含后台会话）先中止其请求
+      activeRuns.get(id)?.abort();
       if (!SessionManager.remove(dir, id)) {
         throw new Error(`session not found: ${id}`);
       }
@@ -795,14 +815,14 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       return timelineFromHistory(history);
     },
     isBusy() {
-      return busy;
+      return activeRuns.has(session.id);
     },
     abort() {
-      controller?.abort();
+      activeRuns.get(session.id)?.abort();
       killTrackedChildren();
     },
     dispose() {
-      controller?.abort();
+      for (const controller of activeRuns.values()) controller.abort();
       killTrackedChildren();
     },
     listExtensions() {
@@ -886,6 +906,40 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       const outcome = await installNpmPackageToAgent({ agentDir, spec });
       if (outcome.ok) {
         api.addLocalPackage(outcome.entryPath);
+        // 热重载扩展，安装后立即可用（无需重启 / 切工作区）
+        await reloadExtensionsForCwd(cwd);
+      }
+      return outcome;
+    },
+    async searchPackages({ query, limit, from }) {
+      const installDir = agentNpmPackagesDir(agentDir);
+      const result = await searchPiPackages({ query, limit, from });
+      return {
+        total: result.total,
+        packages: result.packages.map((row) => ({
+          ...row,
+          installed: fs.existsSync(installedPackageRoot(installDir, row.name)),
+        })),
+      };
+    },
+    listInstalledPackages(): InstalledPiPackage[] {
+      return listInstalledPiPackages(agentDir);
+    },
+    async removeNpmPackage(packageName) {
+      const outcome = await removeNpmPackageFromAgent({ agentDir, packageName });
+      if (outcome.ok) {
+        // 清理 extraExtensions 中指向该包目录的记录
+        const pkgRoot = installedPackageRoot(agentNpmPackagesDir(agentDir), outcome.packageName);
+        const prefix = pkgRoot.toLowerCase() + path.sep;
+        const before = settings.extraExtensions ?? [];
+        const filtered = before.filter((p) => {
+          const lower = path.resolve(p).toLowerCase();
+          return lower !== pkgRoot.toLowerCase() && !lower.startsWith(prefix);
+        });
+        if (filtered.length !== before.length) {
+          settings = saveSettings({ ...settings, extraExtensions: filtered }, agentDir);
+        }
+        await reloadExtensionsForCwd(cwd);
       }
       return outcome;
     },
@@ -952,23 +1006,29 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     async prompt(text) {
       const trimmed = text.trim();
       if (!trimmed) return;
-      if (busy) throw new Error("agent is busy");
+      if (activeRuns.has(session.id)) {
+        throw new Error("该会话正在处理中；可切换到其他会话继续工作");
+      }
       const apiKey = resolveKey();
       if (!apiKey) {
         throw new Error("Missing API key. Set ALUKA_API_KEY / OPENAI_API_KEY or save apiKey in settings.");
       }
 
-      busy = true;
-      controller = new AbortController();
+      // 捕获当前会话上下文：请求进行中切换/打开其他会话不影响本请求
+      const sessionId = session.id;
+      const activeSession = session;
+      const activeHistory = history;
+      const controller = new AbortController();
+      activeRuns.set(sessionId, controller);
       runner.setIdle(false);
       runner.setSignal(controller);
-      const sessionId = session.id;
 
       const releaseBusy = () => {
-        busy = false;
-        controller = undefined;
-        runner.setIdle(true);
-        runner.setSignal(undefined);
+        activeRuns.delete(sessionId);
+        if (activeRuns.size === 0) {
+          runner.setIdle(true);
+          runner.setSignal(undefined);
+        }
       };
 
       try {
@@ -979,7 +1039,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         }
         const promptText = input?.action === "transform" ? input.text : trimmed;
 
-        session.append({ type: "user", role: "user", text: promptText });
+        activeSession.append({ type: "user", role: "user", text: promptText });
         const before = await runner.emitBeforeAgentStart(promptText, systemPrompt);
         if (before?.systemPrompt) {
           systemPrompt = before.systemPrompt;
@@ -991,13 +1051,13 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
           content: [{ type: "text", text: promptText }],
           timestamp: Date.now(),
         };
-        history.push(user);
+        activeHistory.push(user);
 
         const produced = await runAgentLoop(
           [user],
           {
             systemPrompt,
-            messages: history.slice(0, -1),
+            messages: activeHistory.slice(0, -1),
             tools,
           },
           {
@@ -1029,15 +1089,15 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
           findProviderEntry(model.provider)?.streamSimple as StreamFn | undefined,
         );
 
-        history.push(...produced.filter((message) => message !== user));
-        session.append({ type: "turn", messages: produced });
+        activeHistory.push(...produced.filter((message) => message !== user));
+        activeSession.append({ type: "turn", messages: produced });
         await runner.emitEvent({ type: "agent_settled" });
         await emitDesktop({
           type: "usage",
           sessionId,
           usage: buildSessionUsageView({
             sessionId,
-            messages: history,
+            messages: activeHistory,
             cost: model.cost,
           }),
         });

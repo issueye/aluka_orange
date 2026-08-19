@@ -44,6 +44,8 @@ type WorkspaceSidebarProps = {
   workspaces: WorkspaceItem[];
   activeCwd?: string;
   activeSessionId?: string;
+  /** 正在运行的会话（含后台并行会话），用于显示运行中标记 */
+  busySessionIds?: Set<string>;
   onNewChat: () => void;
   onOpenSession: (id: string, cwd: string) => void;
   onSelectWorkspace: (cwd: string) => void;
@@ -57,6 +59,7 @@ export function WorkspaceSidebar({
   workspaces,
   activeCwd,
   activeSessionId,
+  busySessionIds,
   onNewChat,
   onOpenSession,
   onSelectWorkspace,
@@ -191,6 +194,7 @@ export function WorkspaceSidebar({
                         className={`ws-session-open ${s.id === activeSessionId && selected ? "active" : ""}`}
                         onClick={() => onOpenSession(s.id, ws.path)}
                       >
+                        {busySessionIds?.has(s.id) ? <span className="ws-session-running" title="运行中" /> : null}
                         <span className="ws-session-title">{s.title || s.id}</span>
                         <span className="ws-time">{relativeTime(s.mtime)}</span>
                       </button>

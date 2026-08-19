@@ -143,6 +143,14 @@ export interface DesktopHost {
   checkForUpdates(): Promise<UpdateCheckResult>;
   /** 通过 npm 或 aluka install 安装扩展包 */
   installNpmPackage(spec: string): Promise<InstallNpmPackageOutcome>;
+  /** 查询 pi 生态插件市场（分页，带已安装标记） */
+  searchPackages(params: { query?: string; limit?: number; from?: number }): Promise<
+    ReturnType<DesktopRuntime["searchPackages"]>
+  >;
+  /** 列出 npm-packages 下已安装的插件 */
+  listInstalledPackages(): ReturnType<DesktopRuntime["listInstalledPackages"]>;
+  /** 卸载 npm-packages 中的包并清理扩展记录 */
+  removeNpmPackage(packageName: string): Promise<ReturnType<DesktopRuntime["removeNpmPackage"]>>;
   /** 导出会话为指定格式（markdown/json/jsonl） */
   exportSession(format?: SessionExportFormat, sessionId?: string): SessionExportOutcome;
   /** 通过 GitHub Gist 分享会话 */
@@ -255,6 +263,9 @@ export async function createDesktopHost(opts: {
     selectModel: (provider, modelId) => withPreset(runtime.selectModel(provider, modelId)),
     checkForUpdates: () => checkForDesktopUpdate({ currentVersion: VERSION }),
     installNpmPackage: (spec) => runtime.installNpmPackage(spec),
+    searchPackages: (params) => runtime.searchPackages(params),
+    listInstalledPackages: () => runtime.listInstalledPackages(),
+    removeNpmPackage: (packageName) => runtime.removeNpmPackage(packageName),
     exportSession: (format, sessionId) => runtime.exportSession(format, sessionId),
     shareSession: (sessionId) => runtime.shareSession(sessionId),
     getSessionUsage: (sessionId) => runtime.getSessionUsage(sessionId),

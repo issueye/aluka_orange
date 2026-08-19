@@ -164,15 +164,24 @@ app.registerRPC("respondExtensionUi", (params: Parameters<DesktopHost["respondEx
 );
 app.registerRPC("sendPrompt", (params: { text?: string }) => {
   const text = String(params?.text ?? "");
+  // 记录发起时的活跃会话，结果事件据此路由（多会话并行时互不干扰）
+  const sessionId = (() => {
+    try {
+      return requireHost().getActiveSessionId();
+    } catch {
+      return undefined;
+    }
+  })();
   void requireHost()
     .sendPrompt(text)
     .then((result) => {
-      win.emit("prompt.result", result);
+      win.emit("prompt.result", { ...result, sessionId });
     })
     .catch((err) => {
       win.emit("prompt.result", {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
+        sessionId,
       });
     });
   return { started: true };
@@ -247,6 +256,18 @@ app.registerRPC("installNpmPackage", (params: { spec?: string }) => {
     win.emit("package.install", result);
   });
   return { started: true };
+});
+app.registerRPC("searchPackages", (params: { query?: string; limit?: number; from?: number }) =>
+  requireHost().searchPackages({
+    query: params?.query,
+    limit: typeof params?.limit === "number" ? params.limit : undefined,
+    from: typeof params?.from === "number" ? params.from : undefined,
+  }),
+);
+app.registerRPC("listInstalledPackages", () => requireHost().listInstalledPackages());
+app.registerRPC("removeNpmPackage", (params: { name?: string }) => {
+  if (!params?.name?.trim()) throw new Error("removeNpmPackage requires name");
+  return requireHost().removeNpmPackage(params.name.trim());
 });
 app.registerRPC("exportSession", (params: { format?: string; id?: string }) => {
   const format = (params?.format === "json" || params?.format === "jsonl" ? params.format : "markdown") as

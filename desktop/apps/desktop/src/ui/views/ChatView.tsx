@@ -1,0 +1,263 @@
+/**
+ * 对话视图：时间线 + 空态引导 + Composer（工作区选择 / 模型 / 思考深度 / 发送）。
+ *
+ * 始终保持挂载（由 App 壳用 CSS 隐藏），以保留滚动位置与输入内容；
+ * 模型 / 思考深度切换内部直连 RPC 并回调 setSettings 同步状态。
+ */
+import { useEffect, useRef } from "react";
+import { Folder, FolderPlus } from "lucide-react";
+import { rpc } from "../bridge.ts";
+import { Button, Markdown, Select, Textarea } from "../components/index.ts";
+import { ToolCard } from "../ToolCard.tsx";
+import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
+import type {
+  ModelOption,
+  SessionUsageView,
+  SettingsView,
+  TimelineItem,
+  Toast,
+} from "../types.ts";
+import { formatUsage, pathsEqual } from "../lib/utils.ts";
+
+/** 思考深度选项 */
+const THINKING_LEVEL_OPTIONS = [
+  { value: "off", label: "思考 · 关闭" },
+  { value: "minimal", label: "思考 · 极低" },
+  { value: "low", label: "思考 · 低" },
+  { value: "medium", label: "思考 · 中" },
+  { value: "high", label: "思考 · 高" },
+  { value: "xhigh", label: "思考 · 极高" },
+] as const;
+
+/** 将消息角色转换为中文显示标签 */
+function roleLabel(role: TimelineItem["role"], toolName?: string): string {
+  if (toolName) return `工具 · ${toolName}`;
+  if (role === "user") return "用户";
+  if (role === "assistant") return "助手";
+  if (role === "tool") return "工具";
+  return "系统";
+}
+
+export function ChatView(props: {
+  hidden: boolean;
+  timeline: TimelineItem[];
+  streaming: string;
+  busy: boolean;
+  prompt: string;
+  setPrompt: (text: string) => void;
+  onSend: (e?: React.FormEvent) => void;
+  settings: SettingsView;
+  setSettings: (next: SettingsView | ((prev: SettingsView) => SettingsView)) => void;
+  modelOptions: ModelOption[];
+  usage: SessionUsageView | undefined;
+  workspaces: WorkspaceItem[];
+  activeWorkspace: WorkspaceItem | undefined;
+  chooseWorkspace: (mode: "latest" | "new") => Promise<void>;
+  createTempWorkspace: () => Promise<void>;
+  selectWorkspace: (cwd: string, mode?: "latest" | "new") => Promise<void>;
+  /** 打开「输入路径」弹窗（App 壳持有弹窗状态） */
+  onOpenPathDialog: (mode: "latest" | "new") => void;
+  onToast: (message: string, level?: Toast["level"]) => void;
+}) {
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const { settings, setSettings } = props;
+  const toast = props.onToast;
+
+  const isEmptyChat = props.timeline.length === 0 && !props.streaming;
+
+  /** 自动滚动时间线到底部（新消息出现时） */
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [props.timeline, props.streaming]);
+
+  /** 选择模型：写回设置并同步 */
+  function pickModel(next: string) {
+    const [provider, ...rest] = next.split("/");
+    const modelId = rest.join("/");
+    if (!provider || !modelId) return;
+    void (async () => {
+      try {
+        const view = await rpc<SettingsView>("selectModel", { provider, modelId });
+        setSettings(view ?? {});
+        toast(`模型 → ${provider}/${modelId}`, "info");
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    })();
+  }
+
+  /** 切换思考深度：patchSettings 即时生效 */
+  function pickThinking(next: string) {
+    void (async () => {
+      try {
+        const view = await rpc<SettingsView>("patchSettings", { thinkingLevel: next });
+        setSettings(view ?? {});
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    })();
+  }
+
+  return (
+    <div className={`chat-pane${props.hidden ? " is-hidden" : ""}`}>
+      <div className="timeline" ref={timelineRef}>
+        {isEmptyChat ? (
+          <div className="chat-empty">
+            <div className="chat-empty-kicker">开始对话</div>
+            <h2>选择一个工作区</h2>
+            <p>Agent 会在该目录下读写文件、加载技能与扩展。未选择时将使用自动生成的临时目录。</p>
+            <div className="chat-empty-current">
+              <Folder size={16} />
+              <div>
+                <div className="chat-empty-name">
+                  {props.activeWorkspace?.name || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "临时工作区")}
+                </div>
+                <div className="chat-empty-path">
+                  {settings.cwd || "尚未选择，发送消息时会创建临时目录"}
+                </div>
+              </div>
+            </div>
+            <div className="chat-empty-actions">
+              <Button onClick={() => void props.chooseWorkspace("new")}>
+                <FolderPlus size={14} /> 打开文件夹
+              </Button>
+              <Button variant="secondary" onClick={() => void props.createTempWorkspace()}>
+                使用临时目录
+              </Button>
+              <Button variant="ghost" onClick={() => props.onOpenPathDialog("new")}>
+                输入路径
+              </Button>
+            </div>
+            {props.workspaces.filter((ws) => !ws.temporary || !pathsEqual(ws.path, settings.cwd)).length ? (
+              <div className="chat-empty-recent">
+                <div className="chat-empty-recent-label">最近工作区</div>
+                {props.workspaces.slice(0, 6).map((ws) => (
+                  <button
+                    key={ws.path}
+                    type="button"
+                    className={pathsEqual(ws.path, settings.cwd) ? "active" : ""}
+                    onClick={() => void props.selectWorkspace(ws.path, "new")}
+                  >
+                    <Folder size={14} />
+                    <span>{ws.name}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {props.timeline.map((item) => (
+          item.role === "tool" ? (
+            <div key={item.id} className="bubble tool">
+              <ToolCard item={item} />
+            </div>
+          ) : (
+            <div key={item.id} className={`bubble ${item.role === "system" ? "error" : item.role}`}>
+              <div className="role">{roleLabel(item.role, item.toolName)}</div>
+              {item.role === "assistant" ? (
+                <Markdown>{item.text}</Markdown>
+              ) : (
+                <div className="bubble-text">{item.text}</div>
+              )}
+            </div>
+          )
+        ))}
+        {props.streaming ? (
+          <div className="bubble assistant">
+            <div className="role">助手</div>
+            <Markdown>{props.streaming}</Markdown>
+          </div>
+        ) : null}
+      </div>
+      <div className="composer-wrap" data-aluka-drag="no-drag">
+        <form className="composer" onSubmit={(e) => props.onSend(e)}>
+          <button
+            type="button"
+            className="composer-workspace"
+            title={settings.cwd || "临时工作区"}
+            onClick={() => void props.chooseWorkspace(isEmptyChat ? "new" : "latest")}
+          >
+            <Folder size={13} />
+            <span>
+              {props.activeWorkspace?.name
+                || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "选择工作区")}
+            </span>
+          </button>
+          <Textarea
+            className="ui-textarea--composer"
+            rows={3}
+            value={props.prompt}
+            placeholder="给 Agent 发消息…（Enter 发送，Shift+Enter 换行）"
+            onChange={props.setPrompt}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                props.onSend();
+              }
+            }}
+          />
+          <div className="composer-actions">
+            <div className="composer-actions-left">
+              <Select
+                className="model-picker ui-select--compact"
+                value={
+                  settings.provider && settings.model
+                    ? `${settings.provider}/${settings.model}`
+                    : ""
+                }
+                disabled={props.busy}
+                placeholder="暂无模型 — 请到设置中添加"
+                options={
+                  props.modelOptions.length
+                    ? props.modelOptions.map((m) => ({
+                        value: `${m.provider}/${m.id}`,
+                        label: `${m.provider}/${m.name || m.id}${m.configured ? "" : " · 缺密钥"}`,
+                      }))
+                    : settings.provider && settings.model
+                      ? [{
+                          value: `${settings.provider}/${settings.model}`,
+                          label: `${settings.provider}/${settings.model}`,
+                        }]
+                      : []
+                }
+                onChange={pickModel}
+              />
+              <Select
+                className="thinking-picker ui-select--compact"
+                value={settings.thinkingLevel ?? "off"}
+                disabled={props.busy}
+                options={THINKING_LEVEL_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+                onChange={pickThinking}
+              />
+            </div>
+            <div className="composer-actions-right">
+              {props.busy ? (
+                <button
+                  type="button"
+                  className="composer-run-btn"
+                  title="停止生成"
+                  aria-label="停止生成"
+                  onClick={() => void rpc("abortPrompt")}
+                >
+                  <span className="composer-run-btn__orbit" aria-hidden="true">
+                    <span className="composer-run-btn__spark" />
+                  </span>
+                  <span className="composer-run-btn__stop" />
+                </button>
+              ) : (
+                <Button type="submit" disabled={!props.prompt.trim()}>
+                  发送
+                </Button>
+              )}
+            </div>
+          </div>
+        </form>
+        <div className="usage-chip">{formatUsage(props.usage)}</div>
+      </div>
+    </div>
+  );
+}
