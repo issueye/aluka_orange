@@ -15,16 +15,29 @@ import { Button, Input, Markdown, SectionHead, Select, Switch, Textarea } from "
 import "./components/ui.css";
 import "./styles.css";
 
+/**
+ * Aluka Desktop 主应用组件
+ *
+ * 整体布局：左侧边栏 + 右侧主内容区。
+ * 支持三种视图：对话（chat）、设置（settings）、扩展（extensions）。
+ * 通过 bridge/rpc 与主进程通信，处理会话管理、模型选择、Prompt 发送等。
+ */
+
+/** 时间线消息项：对话中的一条消息 */
 type TimelineItem = {
   id: string;
+  /** 消息角色：用户/助手/工具/系统 */
   role: "user" | "assistant" | "tool" | "system";
   text: string;
+  /** 工具调用时的工具名（仅 tool 类型） */
   toolName?: string;
   timestamp: number;
 };
 
+/** 会话摘要：用于侧边栏列表显示 */
 type SessionSummary = { id: string; title: string; mtime: number };
 
+/** 设置视图：当前用户配置 */
 type SettingsView = {
   model?: string;
   provider?: string;
@@ -36,40 +49,48 @@ type SettingsView = {
   providerPreset?: string;
 };
 
+/** 模型选项：供模型选择器下拉列表使用 */
 type ModelOption = {
   provider: string;
   id: string;
   name?: string;
   api?: string;
   baseUrl?: string;
+  /** 是否已配置 API 密钥 */
   configured: boolean;
 };
 
+/** 会话用量统计 */
 type SessionUsageView = {
   sessionId: string;
   totals: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    totalTokens: number;
-    calls: number;
+    input: number;     // 输入 token 数
+    output: number;    // 输出 token 数
+    cacheRead: number;  // 缓存读取 token 数
+    cacheWrite: number; // 缓存写入 token 数
+    totalTokens: number; // 合计 token 数
+    calls: number;      // API 调用次数
   };
-  estimatedCostUsd?: number;
+  estimatedCostUsd?: number; // 预估费用（美元）
   note: string;
 };
 
+/** 扩展 UI 请求：扩展可通过此机制与用户交互 */
 type ExtensionUiRequest =
   | { id: string; kind: "notify"; message: string; level: "info" | "warning" | "error" }
   | { id: string; kind: "confirm"; title: string; message: string }
   | { id: string; kind: "select"; title: string; options: string[] }
   | { id: string; kind: "input"; title: string; placeholder?: string };
 
+/** Toast 通知项 */
 type Toast = { id: number; message: string; level: "info" | "warning" | "error" };
 
+/** 顶层视图切换状态 */
 type ShellView = "chat" | "settings" | "extensions";
+/** 设置页内的子分区 */
 type SettingsSection = "workspace" | "providers" | "appearance" | "packages" | "usage" | "about";
 
+/** 设置页左侧导航菜单配置 */
 const SETTINGS_NAV: Array<{ id: SettingsSection; label: string }> = [
   { id: "workspace", label: "工作区" },
   { id: "providers", label: "供应商" },
@@ -79,6 +100,11 @@ const SETTINGS_NAV: Array<{ id: SettingsSection; label: string }> = [
   { id: "about", label: "关于" },
 ];
 
+/**
+ * 将消息角色转换为中文显示标签
+ * @param role - 消息角色
+ * @param toolName - 工具名称（可选）
+ */
 function roleLabel(role: TimelineItem["role"], toolName?: string): string {
   if (toolName) return `工具 · ${toolName}`;
   if (role === "user") return "用户";
@@ -87,6 +113,7 @@ function roleLabel(role: TimelineItem["role"], toolName?: string): string {
   return "系统";
 }
 
+/** 格式化用量统计为简短摘要文本 */
 function formatUsage(u?: SessionUsageView): string {
   if (!u || !u.totals.calls) return "用量 —";
   const t = u.totals;
@@ -94,6 +121,10 @@ function formatUsage(u?: SessionUsageView): string {
   return `输入 ${t.input} · 输出 ${t.output} · 合计 ${t.totalTokens} · 调用 ${t.calls}${cost}`;
 }
 
+/**
+ * 等待 Host 运行时就绪
+ * 轮询 getRuntimeInfo 直到 hostReady 为 true，超时 15 秒。
+ */
 async function waitHostRuntime(): Promise<{ productVersion: string; phase: string; platform: string; hostReady?: boolean }> {
   const deadline = Date.now() + 15000;
   let last: { productVersion: string; phase: string; platform: string; hostReady?: boolean } | undefined;
@@ -106,59 +137,71 @@ async function waitHostRuntime(): Promise<{ productVersion: string; phase: strin
   throw new Error("host 启动超时");
 }
 
+/**
+ * Aluka Desktop 主应用组件
+ *
+ * 布局：左侧边栏（会话列表 + 导航）+ 右侧主内容区（对话/设置/扩展）。
+ * 通过 bridge/rpc 与主进程通信。
+ */
 export function App() {
-  const [status, setStatus] = useState("连接中…");
-  const [idleStatus, setIdleStatus] = useState("就绪");
-  const [view, setView] = useState<ShellView>("chat");
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>("workspace");
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activeId, setActiveId] = useState<string | undefined>();
-  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [streaming, setStreaming] = useState("");
-  const [settings, setSettings] = useState<SettingsView>({});
-  const [apiKeyDraft, setApiKeyDraft] = useState("");
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const [pkgPath, setPkgPath] = useState("");
-  const [npmSpec, setNpmSpec] = useState("");
-  const [npmHint, setNpmHint] = useState("");
-  const [packages, setPackages] = useState<string[]>([]);
-  const [usage, setUsage] = useState<SessionUsageView | undefined>();
-  const [extSummary, setExtSummary] = useState("");
-  const [extList, setExtList] = useState<Array<{ path: string; tools: string[]; commands: string[] }>>([]);
-  const [extErrors, setExtErrors] = useState<Array<{ path: string; error: string }>>([]);
-  const [skills, setSkills] = useState<Array<{ name: string; description: string; path: string }>>([]);
-  const [modelsPreviewHtml, setModelsPreview] = useState<string>("");
+  // ── 状态管理 ──
+  const [status, setStatus] = useState("连接中…");          // 底部状态栏文本
+  const [idleStatus, setIdleStatus] = useState("就绪");      // 空闲时的状态文本
+  const [view, setView] = useState<ShellView>("chat");       // 当前视图：对话/设置/扩展
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("workspace"); // 设置页子分区
+  const [sessions, setSessions] = useState<SessionSummary[]>([]); // 会话列表
+  const [activeId, setActiveId] = useState<string | undefined>(); // 当前活跃会话 ID
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);   // 当前会话时间线
+  const [busy, setBusy] = useState(false);                        // 是否正在处理请求
+  const [prompt, setPrompt] = useState("");                      // 输入框内容
+  const [streaming, setStreaming] = useState("");                // 正在流式输出的文本
+  const [settings, setSettings] = useState<SettingsView>({});     // 用户设置
+  const [apiKeyDraft, setApiKeyDraft] = useState("");            // API Key 输入草稿
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]); // 可用模型列表
+  const [pkgPath, setPkgPath] = useState("");                   // 本地扩展包路径输入
+  const [npmSpec, setNpmSpec] = useState("");                   // npm 包规格输入
+  const [npmHint, setNpmHint] = useState("");                   // npm 安装结果提示
+  const [packages, setPackages] = useState<string[]>([]);        // 已注册的本地扩展包
+  const [usage, setUsage] = useState<SessionUsageView | undefined>(); // 会话用量统计
+  const [extSummary, setExtSummary] = useState("");             // 扩展加载摘要
+  const [extList, setExtList] = useState<Array<{ path: string; tools: string[]; commands: string[] }>>([]); // 已加载扩展
+  const [extErrors, setExtErrors] = useState<Array<{ path: string; error: string }>>([]); // 扩展加载错误
+  const [skills, setSkills] = useState<Array<{ name: string; description: string; path: string }>>([]); // 可用技能
+  const [modelsPreviewHtml, setModelsPreview] = useState<string>(""); // models.json 预览
   const [updateHint, setUpdateHint] = useState(
     "可选：设置环境变量 ALUKA_DESKTOP_RELEASES_URL 指向 GitHub releases/latest JSON。",
   );
-  const [about, setAbout] = useState("");
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [modal, setModal] = useState<ExtensionUiRequest | undefined>();
-  const [selectChoice, setSelectChoice] = useState<string | undefined>();
-  const [modalInput, setModalInput] = useState("");
-  const toastSeq = useRef(0);
-  const timelineRef = useRef<HTMLDivElement>(null);
+  const [about, setAbout] = useState("");                       // 关于信息
+  const [toasts, setToasts] = useState<Toast[]>([]);            // Toast 通知列表
+  const [modal, setModal] = useState<ExtensionUiRequest | undefined(); // 扩展 UI 弹窗请求
+  const [selectChoice, setSelectChoice] = useState<string | undefined>(); // 弹窗选择结果
+  const [modalInput, setModalInput] = useState("");             // 弹窗输入内容
+  const toastSeq = useRef(0);                                    // Toast 序列号
+  const timelineRef = useRef<HTMLDivElement>(null);              // 时间线容器引用（用于自动滚动）
 
+  // 当前主题（默认深色）
   const theme = settings.theme === "light" ? "light" : "dark";
 
+  /** 显示 Toast 通知，4.5 秒后自动消失 */
   const toast = useCallback((message: string, level: Toast["level"] = "info") => {
     const id = ++toastSeq.current;
     setToasts((prev) => [...prev, { id, message, level }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
   }, []);
 
+/** 刷新会话列表 */
   const refreshSessions = useCallback(async () => {
     const list = (await rpc<SessionSummary[]>("listSessions")) ?? [];
     setSessions(list);
   }, []);
 
+  /** 刷新当前会话的 token 用量统计 */
   const refreshUsage = useCallback(async (id?: string) => {
     const view = await rpc<SessionUsageView>("getSessionUsage", { id });
     if (view) setUsage(view);
   }, []);
 
+  /** 刷新扩展、技能列表及加载错误信息 */
   const refreshExtensions = useCallback(async () => {
     const [inv, skillList] = await Promise.all([
       rpc<{ extensions: typeof extList; errors: typeof extErrors }>("listExtensions"),
@@ -172,6 +215,10 @@ export function App() {
     );
   }, []);
 
+/**
+   * 加载所有设置：用户设置、本地扩展包、模型选项、models.json 预览。
+   * 同时更新主题和扩展列表。
+   */
   const loadSettings = useCallback(async () => {
     const s = await rpc<SettingsView>("getSettings");
     setSettings(s ?? {});
@@ -207,6 +254,9 @@ export function App() {
     setModelsPreview(blocks.join("\n") || "未找到 models.json");
   }, []);
 
+/**
+   * 打开指定会话：加载时间线、切换到对话视图、刷新列表和用量
+   */
   const openSession = useCallback(
     async (id: string) => {
       const opened = await rpc<{ id: string; timeline: TimelineItem[] }>("openSession", { id });
@@ -220,6 +270,9 @@ export function App() {
     [refreshSessions, refreshUsage],
   );
 
+  /**
+   * 初始化 Effect：等待 Host 就绪，加载所有数据，发送 ui-ready 事件
+   */
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -251,6 +304,11 @@ export function App() {
     };
   }, [loadSettings, refreshExtensions, refreshSessions, refreshUsage, toast]);
 
+  /**
+   * 运行时事件监听 Effect
+   * 处理 agent_start/end、text_delta、message_end、tool_start/end、
+   * extension_ui、usage、error 等事件。
+   */
   useEffect(() => {
     const onRuntime = (raw: unknown) => {
       const event = raw as {
@@ -419,6 +477,7 @@ export function App() {
     };
   }, [idleStatus, loadSettings, refreshExtensions, refreshSessions, toast]);
 
+  /** 自动滚动时间线到底部（新消息出现时） */
   useEffect(() => {
     const el = timelineRef.current;
     if (el) el.scrollTop = el.scrollHeight;

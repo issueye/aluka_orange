@@ -3,25 +3,42 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 import { Field } from "./Field.tsx";
 
+/** 下拉选项类型 */
 export type SelectOption = {
+  /** 选项值 */
   value: string;
+  /** 显示文本 */
   label: string;
+  /** 是否禁用 */
   disabled?: boolean;
 };
 
+/**
+ * Select 下拉选择器属性类型
+ * 基于 Portal 实现的自定义下拉组件，替代原生 <select>。
+ */
 export type SelectProps = {
+  /** 当前选中值（受控模式） */
   value: string;
+  /** 可选选项列表 */
   options: SelectOption[];
+  /** 值变更回调 */
   onChange: (value: string) => void;
+  /** 未选中时的占位文本 */
   placeholder?: string;
+  /** 是否禁用 */
   disabled?: boolean;
+  /** 字段标签 */
   label?: string;
+  /** 说明提示文字 */
   hint?: string;
+  /** 额外 CSS 类名 */
   className?: string;
-  /** 下拉列表最大高度 */
+  /** 下拉列表最大高度（默认 260px） */
   maxMenuHeight?: number;
 };
 
+/** 下拉菜单定位样式 */
 type MenuStyle = {
   top?: number;
   bottom?: number;
@@ -31,6 +48,10 @@ type MenuStyle = {
   placement: "bottom" | "top";
 };
 
+/**
+ * 计算下拉菜单的定位样式
+ * 根据触发器位置自动决定向上或向下展开，并限制最大高度。
+ */
 function buildMenuStyle(
   trigger: HTMLElement,
   maxMenuHeight: number,
@@ -87,6 +108,11 @@ function buildMenuStyle(
   return style;
 }
 
+/**
+ * 自定义下拉选择器组件
+ * 使用 Portal 渲染下拉菜单，自动计算展开方向和最大高度。
+ * 支持键盘导航和无障碍访问。
+ */
 export function Select({
   value,
   options,
@@ -98,12 +124,13 @@ export function Select({
   className = "",
   maxMenuHeight = 260,
 }: SelectProps) {
-  const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<MenuStyle | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLUListElement>(null);
-  const listId = useId();
+  const [open, setOpen] = useState(false); // 下拉菜单是否展开
+  const [menuStyle, setMenuStyle] = useState<MenuStyle | null>(null); // 菜单定位样式
+  const rootRef = useRef<HTMLDivElement>(null); // 根容器引用
+  const triggerRef = useRef<HTMLButtonElement>(null); // 触发按钮引用
+  const menuRef = useRef<HTMLUListElement>(null); // 下拉菜单引用
+  const listId = useId(); // 用于 aria 关联的唯一 ID
+  // 根据当前 value 查找选中项
   const selected = useMemo(
     () => options.find((opt) => opt.value === value),
     [options, value],

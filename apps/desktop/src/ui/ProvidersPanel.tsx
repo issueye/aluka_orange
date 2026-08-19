@@ -3,32 +3,48 @@ import { Pencil, Plus, Trash2, KeyRound } from "lucide-react";
 import { rpc } from "./bridge.ts";
 import { Button, Input, SectionHead, Select } from "./components/index.ts";
 
+/**
+ * ProvidersPanel - 供应商管理面板
+ *
+ * 提供模型供应商的增删改查界面：
+ * - 列出所有已配置的供应商及其模型
+ * - 支持快捷添加 OpenAI / Anthropic / Ollama 预设
+ * - 支持自定义供应商和模型
+ * - API 密钥的设置与清除
+ */
+
+/** 供应商视图：对应 models.json 中的一个供应商配置 */
 export type ModelsJsonProviderView = {
   provider: string;
   baseUrl?: string;
   api?: string;
+  /** 是否已配置 API 密钥 */
   hasApiKeyField: boolean;
+  /** 该供应商下的所有模型 */
   models: Array<{ id: string; name?: string; reasoning?: boolean; contextWindow?: number; maxTokens?: number }>;
 };
 
+/** models.json 配置视图：包含路径信息和所有供应商 */
 export type ModelsJsonConfigView = {
-  path: string;
-  exists: boolean;
-  error?: string;
+  path: string;          // 配置文件路径
+  exists: boolean;        // 文件是否存在
+  error?: string;         // 加载错误信息
   providers: ModelsJsonProviderView[];
 };
 
+/** API 类型：OpenAI 兼容或 Anthropic Messages */
 type ApiKind = "openai-completions" | "anthropic-messages";
 
+/** 添加/编辑供应商的表单草稿状态 */
 type Draft = {
-  provider: string;
-  baseUrl: string;
-  api: ApiKind;
-  modelId: string;
-  modelName: string;
-  apiKey: string;
-  previousProvider?: string;
-  previousModelId?: string;
+  provider: string;       // 供应商 ID
+  baseUrl: string;        // 接口地址
+  api: ApiKind;           // API 类型
+  modelId: string;        // 模型 ID
+  modelName: string;      // 显示名称
+  apiKey: string;         // API 密钥
+  previousProvider?: string;  // 编辑时的原供应商 ID（用于重命名）
+  previousModelId?: string;   // 编辑时的原模型 ID
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -40,6 +56,7 @@ const EMPTY_DRAFT: Draft = {
   apiKey: "",
 };
 
+/** 快捷预设：一键添加常用供应商配置 */
 const QUICK_PRESETS: Array<{ label: string; draft: Partial<Draft> }> = [
   {
     label: "OpenAI",
@@ -74,19 +91,27 @@ const QUICK_PRESETS: Array<{ label: string; draft: Partial<Draft> }> = [
   },
 ];
 
+/**
+ * 供应商管理面板组件
+ * @param activeProvider - 当前激活的供应商
+ * @param activeModel - 当前激活的模型
+ * @param onToast - Toast 通知回调
+ * @param onActiveChanged - 激活模型变更时的回调
+ */
 export function ProvidersPanel(props: {
   activeProvider?: string;
   activeModel?: string;
   onToast: (message: string, level?: "info" | "warning" | "error") => void;
   onActiveChanged: () => void;
 }) {
-  const [config, setConfig] = useState<ModelsJsonConfigView | undefined>();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [keyDialog, setKeyDialog] = useState<string | undefined>();
-  const [keyDraft, setKeyDraft] = useState("");
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
-  const [busy, setBusy] = useState(false);
+  const [config, setConfig] = useState<ModelsJsonConfigView | undefined>(); // 当前配置
+  const [dialogOpen, setDialogOpen] = useState(false);   // 添加/编辑弹窗是否打开
+  const [keyDialog, setKeyDialog] = useState<string | undefined>(); // API 密钥弹窗的目标供应商
+  const [keyDraft, setKeyDraft] = useState("");           // API 密钥输入草稿
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT); // 表单草稿
+  const [busy, setBusy] = useState(false);                 // 操作进行中标记
 
+/** 刷新 models.json 配置 */
   const refresh = useCallback(async () => {
     const next = await rpc<ModelsJsonConfigView>("getModelsJsonConfig");
     setConfig(next);
@@ -96,11 +121,13 @@ export function ProvidersPanel(props: {
     void refresh();
   }, [refresh]);
 
+/** 打开添加弹窗，可选预填预设 */
   function openCreate(preset?: Partial<Draft>) {
     setDraft({ ...EMPTY_DRAFT, ...preset });
     setDialogOpen(true);
   }
 
+  /** 打开编辑弹窗，预填现有供应商和模型信息 */
   function openEdit(provider: ModelsJsonProviderView, modelId: string) {
     const model = provider.models.find((m) => m.id === modelId);
     setDraft({
@@ -116,6 +143,7 @@ export function ProvidersPanel(props: {
     setDialogOpen(true);
   }
 
+/** 保存供应商/模型草稿到 models.json */
   async function saveDraft(e?: React.FormEvent) {
     e?.preventDefault();
     setBusy(true);
@@ -141,6 +169,7 @@ export function ProvidersPanel(props: {
     }
   }
 
+/** 删除指定供应商及其全部模型 */
   async function removeProvider(provider: string) {
     if (!confirm(`确定删除供应商「${provider}」及其全部模型？`)) return;
     setBusy(true);
@@ -156,6 +185,7 @@ export function ProvidersPanel(props: {
     }
   }
 
+/** 删除指定模型 */
   async function removeModel(provider: string, modelId: string) {
     if (!confirm(`确定删除模型 ${provider}/${modelId}？`)) return;
     setBusy(true);
@@ -171,6 +201,7 @@ export function ProvidersPanel(props: {
     }
   }
 
+/** 选择并激活指定模型 */
   async function useModel(provider: string, modelId: string) {
     setBusy(true);
     try {
@@ -184,6 +215,7 @@ export function ProvidersPanel(props: {
     }
   }
 
+/** 保存 API 密钥到 models.json */
   async function saveKey(e?: React.FormEvent) {
     e?.preventDefault();
     if (!keyDialog) return;
@@ -205,6 +237,7 @@ export function ProvidersPanel(props: {
     }
   }
 
+/** 清除指定供应商的 API 密钥 */
   async function clearKey(provider: string) {
     setBusy(true);
     try {
