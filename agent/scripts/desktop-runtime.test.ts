@@ -380,7 +380,30 @@ describe("session usage", () => {
     assert.equal(again.totals.input, 11);
     assert.equal(again.totals.output, 7);
     assert.equal(again.totals.calls, 1);
-    assert.equal(buildSessionUsageView({ sessionId: "x", messages: [] }).oauthSupported, false);
+    assert.equal(again.contextTokens, 18);
+    assert.ok(again.contextWindow > 0);
+    const emptyUsage = buildSessionUsageView({ sessionId: "x", messages: [] });
+    assert.equal(emptyUsage.oauthSupported, false);
+    assert.equal(emptyUsage.contextTokens, 0);
+    assert.equal(
+      buildSessionUsageView({
+        sessionId: "x",
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "a" }],
+            usage: { input: 10, output: 5, totalTokens: 17 },
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "b" }],
+            usage: { input: 100, output: 20, totalTokens: 120 },
+          },
+        ],
+        contextWindow: 128000,
+      }).contextTokens,
+      120,
+    );
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(cwd, { recursive: true, force: true });
   });
@@ -395,6 +418,32 @@ describe("desktop workspaces", () => {
     assert.ok(tree.some((ws) => samePath(ws.path, rt.cwd) && ws.temporary));
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(rt.cwd, { recursive: true, force: true });
+  });
+
+  it("does not create a session file until the user asks", async () => {
+    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-agent-"));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-cwd-"));
+    const rt = await createDesktopRuntime({ agentDir, cwd });
+    assert.equal(rt.listSessions().length, 0);
+    assert.equal(rt.getActiveSessionId(), undefined);
+
+    rt.dispose();
+    const again = await createDesktopRuntime({ agentDir, cwd });
+    assert.equal(again.listSessions().length, 0);
+    assert.equal(again.getActiveSessionId(), undefined);
+
+    const created = again.createSession();
+    assert.ok(created.id);
+    assert.equal(again.listSessions().length, 1);
+    assert.equal(again.getActiveSessionId(), created.id);
+
+    again.dispose();
+    const restored = await createDesktopRuntime({ agentDir, cwd });
+    assert.equal(restored.listSessions().length, 1);
+    assert.equal(restored.getActiveSessionId(), created.id);
+
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
   });
 
   it("groups sessions by workspace and opens across cwd", async () => {
@@ -438,7 +487,8 @@ describe("desktop workspaces", () => {
     assert.ok(back.timeline.some((item) => item.text.includes("analysis result from A")));
 
     const afterDelete = rt.deleteSession(createdA.id, wsA);
-    assert.notEqual(afterDelete.id, createdA.id);
+    assert.equal(afterDelete.id, "");
+    assert.equal(rt.getActiveSessionId(), undefined);
     const treeAfter = rt.listWorkspaces();
     const groupAAfter = treeAfter.find((ws) => samePath(ws.path, wsA));
     assert.ok(groupAAfter && !groupAAfter.sessions.some((s) => s.id === createdA.id));

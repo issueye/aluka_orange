@@ -141,8 +141,8 @@ export function ToolCard({ item }: { item: ToolCardItem }) {
   const path = typeof args?.path === "string" ? args.path : undefined;
   const numbered = useMemo(() => parseNumberedOutput(output), [output]);
   const [copied, setCopied] = useState(false);
-  const [userOpen, setUserOpen] = useState<boolean | undefined>(undefined);
-  const open = userOpen ?? status === "error";
+  const [userOpen, setUserOpen] = useState(false);
+  const open = userOpen;
   const name = fileName(path);
   const summary = summarizeArgs(args) || name || "";
   const lineCount = numbered?.lines.length ?? (output ? output.split("\n").length : 0);

@@ -193,7 +193,7 @@ export interface DesktopRuntime {
   removeWorkspace(dir: string): { cwd: string; workspaces: WorkspaceView[] };
   createSession(opts?: { cwd?: string }): SessionHandle;
   openSession(id: string, workspacePath?: string): OpenedSession;
-  /** 删除会话；若删的是当前会话则切到最近一条或新建 */
+  /** 删除会话；若删的是当前会话则切到最近一条，没有则不自动新建 */
   deleteSession(id: string, workspacePath?: string): OpenedSession;
   getActiveSessionId(): string | undefined;
   getTimeline(): TimelineItem[];
@@ -461,7 +461,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   }));
   const sessionDir = () => getSessionsDir(cwd, agentDir);
 
-  let session = SessionManager.create(sessionDir(), undefined, cwd);
+  let session = SessionManager.inMemory(cwd);
   let history: AgentMessage[] = [];
   /** 正在运行的会话（sessionId → AbortController），支持多会话并行执行 */
   const activeRuns = new Map<string, AbortController>();
@@ -523,17 +523,24 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     return tools;
   }
 
-  let tools = rebuildTools();
-
-  if (settings.lastSessionId) {
-    try {
-      session = SessionManager.open(sessionDir(), settings.lastSessionId, cwd);
-      history = historyFromSession(session);
-      tools = rebuildTools();
-    } catch {
-      /* keep newly created session */
+  function tryRestoreSession(): SessionManager | undefined {
+    if (settings.lastSessionId) {
+      try {
+        return SessionManager.open(sessionDir(), settings.lastSessionId, cwd);
+      } catch {
+        /* fall through to latest */
+      }
     }
+    return SessionManager.latest(sessionDir(), cwd);
   }
+
+  const restored = tryRestoreSession();
+  if (restored) {
+    session = restored;
+    history = historyFromSession(session);
+  }
+
+  let tools = rebuildTools();
 
   emitDesktop = async (event) => {
     await opts.onEvent?.(event);
@@ -552,7 +559,26 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   }
 
   function persistSessionPointer() {
-    persistWorkspaceState({ lastSessionId: session.id });
+    persistWorkspaceState(
+      session.isPersisted() && session.getSessionFile()
+        ? { lastSessionId: session.id }
+        : { lastSessionId: undefined },
+    );
+  }
+
+  function bindDraftSession(): OpenedSession {
+    history = [];
+    session = SessionManager.inMemory(cwd);
+    persistSessionPointer();
+    tools = rebuildTools();
+    return { id: "", file: "", cwd, timeline: [] };
+  }
+
+  function ensurePersistedSession() {
+    if (session.isPersisted() && session.getSessionFile()) return;
+    session = SessionManager.create(sessionDir(), undefined, cwd);
+    persistSessionPointer();
+    tools = rebuildTools();
   }
 
   function listWorkspaceViews(): WorkspaceView[] {
@@ -612,11 +638,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     if (listed[0]) {
       return bindSession(SessionManager.open(sessionDir(), listed[0].id, cwd));
     }
-    history = [];
-    session = SessionManager.create(sessionDir(), undefined, cwd);
-    persistSessionPointer();
-    tools = rebuildTools();
-    return { id: session.id, file: session.file, cwd, timeline: [] };
+    return bindDraftSession();
   }
 
   function switchToWorkspace(dir: string, mode: SelectWorkspaceMode = "latest"): OpenedSession {
@@ -809,7 +831,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       };
     },
     getActiveSessionId() {
-      return session.id;
+      return session.isPersisted() && session.getSessionFile() ? session.id : undefined;
     },
     getTimeline() {
       return timelineFromHistory(history);
@@ -969,12 +991,14 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
             sessionId: other.id,
             messages: msgs,
             cost: model.cost,
+            contextWindow: model.contextWindow,
           });
         } catch {
           return buildSessionUsageView({
             sessionId: id,
             messages: [],
             cost: model.cost,
+            contextWindow: model.contextWindow,
           });
         }
       }
@@ -982,6 +1006,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         sessionId: session.id,
         messages: history,
         cost: model.cost,
+        contextWindow: model.contextWindow,
       });
     },
     setSessionName(name) {
@@ -1006,6 +1031,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     async prompt(text) {
       const trimmed = text.trim();
       if (!trimmed) return;
+      ensurePersistedSession();
       if (activeRuns.has(session.id)) {
         throw new Error("该会话正在处理中；可切换到其他会话继续工作");
       }
@@ -1099,6 +1125,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
             sessionId,
             messages: activeHistory,
             cost: model.cost,
+            contextWindow: model.contextWindow,
           }),
         });
       } catch (error) {

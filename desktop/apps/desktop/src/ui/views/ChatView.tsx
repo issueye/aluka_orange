@@ -4,10 +4,11 @@
  * 始终保持挂载（由 App 壳用 CSS 隐藏），以保留滚动位置与输入内容；
  * 模型 / 思考深度切换内部直连 RPC 并回调 setSettings 同步状态。
  */
-import { useEffect, useRef } from "react";
-import { Folder, FolderPlus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Copy, Folder, FolderPlus } from "lucide-react";
 import { rpc } from "../bridge.ts";
 import { Button, Markdown, Select, Textarea } from "../components/index.ts";
+import { ContextRing } from "../components/ContextRing.tsx";
 import { ToolCard } from "../ToolCard.tsx";
 import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
 import type {
@@ -38,6 +39,18 @@ function roleLabel(role: TimelineItem["role"], toolName?: string): string {
   return "系统";
 }
 
+function formatBubbleTime(timestamp?: number): string {
+  if (!timestamp) return "";
+  try {
+    return new Date(timestamp).toLocaleTimeString("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 export function ChatView(props: {
   hidden: boolean;
   timeline: TimelineItem[];
@@ -52,7 +65,7 @@ export function ChatView(props: {
   usage: SessionUsageView | undefined;
   workspaces: WorkspaceItem[];
   activeWorkspace: WorkspaceItem | undefined;
-  chooseWorkspace: (mode: "latest" | "new") => Promise<void>;
+  chooseWorkspace: (mode: "latest" | "new") => void;
   createTempWorkspace: () => Promise<void>;
   selectWorkspace: (cwd: string, mode?: "latest" | "new") => Promise<void>;
   /** 打开「输入路径」弹窗（App 壳持有弹窗状态） */
@@ -62,14 +75,26 @@ export function ChatView(props: {
   const timelineRef = useRef<HTMLDivElement>(null);
   const { settings, setSettings } = props;
   const toast = props.onToast;
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const isEmptyChat = props.timeline.length === 0 && !props.streaming;
+  const needsWorkspace = !settings.cwd;
 
   /** 自动滚动时间线到底部（新消息出现时） */
   useEffect(() => {
     const el = timelineRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [props.timeline, props.streaming]);
+
+  const copyUserText = useCallback(async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 1200);
+    } catch {
+      toast("复制失败", "error");
+    }
+  }, [toast]);
 
   /** 选择模型：写回设置并同步 */
   function pickModel(next: string) {
@@ -104,55 +129,96 @@ export function ChatView(props: {
       <div className="timeline" ref={timelineRef}>
         {isEmptyChat ? (
           <div className="chat-empty">
-            <div className="chat-empty-kicker">开始对话</div>
-            <h2>选择一个工作区</h2>
-            <p>Agent 会在该目录下读写文件、加载技能与扩展。未选择时将使用自动生成的临时目录。</p>
-            <div className="chat-empty-current">
-              <Folder size={16} />
-              <div>
-                <div className="chat-empty-name">
-                  {props.activeWorkspace?.name || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "临时工作区")}
+            {needsWorkspace ? (
+              <>
+                <div className="chat-empty-kicker">开始对话</div>
+                <h2>选择一个工作区</h2>
+                <p>Agent 会在该目录下读写文件、加载技能与扩展。未选择时将使用自动生成的临时目录。</p>
+                <div className="chat-empty-current">
+                  <Folder size={16} />
+                  <div>
+                    <div className="chat-empty-name">临时工作区</div>
+                    <div className="chat-empty-path">尚未选择，发送消息时会创建临时目录</div>
+                  </div>
                 </div>
-                <div className="chat-empty-path">
-                  {settings.cwd || "尚未选择，发送消息时会创建临时目录"}
+                <div className="chat-empty-actions">
+                  <Button onClick={() => props.chooseWorkspace("latest")}>
+                    <FolderPlus size={14} /> 打开文件夹
+                  </Button>
+                  <Button variant="secondary" onClick={() => void props.createTempWorkspace()}>
+                    使用临时目录
+                  </Button>
+                  <Button variant="ghost" onClick={() => props.onOpenPathDialog("latest")}>
+                    输入路径
+                  </Button>
                 </div>
-              </div>
-            </div>
-            <div className="chat-empty-actions">
-              <Button onClick={() => void props.chooseWorkspace("new")}>
-                <FolderPlus size={14} /> 打开文件夹
-              </Button>
-              <Button variant="secondary" onClick={() => void props.createTempWorkspace()}>
-                使用临时目录
-              </Button>
-              <Button variant="ghost" onClick={() => props.onOpenPathDialog("new")}>
-                输入路径
-              </Button>
-            </div>
-            {props.workspaces.filter((ws) => !ws.temporary || !pathsEqual(ws.path, settings.cwd)).length ? (
-              <div className="chat-empty-recent">
-                <div className="chat-empty-recent-label">最近工作区</div>
-                {props.workspaces.slice(0, 6).map((ws) => (
-                  <button
-                    key={ws.path}
-                    type="button"
-                    className={pathsEqual(ws.path, settings.cwd) ? "active" : ""}
-                    onClick={() => void props.selectWorkspace(ws.path, "new")}
-                  >
-                    <Folder size={14} />
-                    <span>{ws.name}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
+                {props.workspaces.filter((ws) => !ws.temporary).length ? (
+                  <div className="chat-empty-recent">
+                    <div className="chat-empty-recent-label">最近工作区</div>
+                    {props.workspaces.slice(0, 6).map((ws) => (
+                      <button
+                        key={ws.path}
+                        type="button"
+                        className={pathsEqual(ws.path, settings.cwd) ? "active" : ""}
+                        onClick={() => void props.selectWorkspace(ws.path, "latest")}
+                      >
+                        <Folder size={14} />
+                        <span>{ws.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="chat-empty-kicker">开始对话</div>
+                <h2>工作区已就绪</h2>
+                <p>给 Agent 发消息即可。需要换目录时，用侧栏或输入框上的工作区按钮切换。</p>
+                <div className="chat-empty-current">
+                  <Folder size={16} />
+                  <div>
+                    <div className="chat-empty-name">
+                      {props.activeWorkspace?.name || settings.cwd?.split(/[\\/]/).pop() || "工作区"}
+                    </div>
+                    <div className="chat-empty-path">{settings.cwd}</div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         ) : null}
-        {props.timeline.map((item) => (
-          item.role === "tool" ? (
-            <div key={item.id} className="bubble tool">
-              <ToolCard item={item} />
-            </div>
-          ) : (
+        {props.timeline.map((item) => {
+          if (item.role === "tool") {
+            return (
+              <div key={item.id} className="bubble tool">
+                <ToolCard item={item} />
+              </div>
+            );
+          }
+          if (item.role === "user") {
+            const timeLabel = formatBubbleTime(item.timestamp);
+            const isCopied = copiedId === item.id;
+            return (
+              <div key={item.id} className="bubble-row bubble-row--user">
+                <div className="bubble user" tabIndex={0}>
+                  <div className="bubble-user-actions" aria-hidden={false}>
+                    <button
+                      type="button"
+                      className={`bubble-copy${isCopied ? " bubble-copy--copied" : ""}`}
+                      title={isCopied ? "已复制" : "复制"}
+                      aria-label={isCopied ? "已复制" : "复制消息"}
+                      onClick={() => void copyUserText(item.id, item.text)}
+                    >
+                      {isCopied ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                  <div className="bubble-text">{item.text}</div>
+                </div>
+                {timeLabel ? <div className="bubble-meta">{timeLabel}</div> : null}
+              </div>
+            );
+          }
+          return (
             <div key={item.id} className={`bubble ${item.role === "system" ? "error" : item.role}`}>
               <div className="role">{roleLabel(item.role, item.toolName)}</div>
               {item.role === "assistant" ? (
@@ -161,8 +227,8 @@ export function ChatView(props: {
                 <div className="bubble-text">{item.text}</div>
               )}
             </div>
-          )
-        ))}
+          );
+        })}
         {props.streaming ? (
           <div className="bubble assistant">
             <div className="role">助手</div>
@@ -176,7 +242,7 @@ export function ChatView(props: {
             type="button"
             className="composer-workspace"
             title={settings.cwd || "临时工作区"}
-            onClick={() => void props.chooseWorkspace(isEmptyChat ? "new" : "latest")}
+            onClick={() => props.chooseWorkspace("latest")}
           >
             <Folder size={13} />
             <span>
@@ -256,7 +322,13 @@ export function ChatView(props: {
             </div>
           </div>
         </form>
-        <div className="usage-chip">{formatUsage(props.usage)}</div>
+        <div className="composer-meta">
+          <div className="usage-chip">{formatUsage(props.usage)}</div>
+          <ContextRing
+            used={props.usage?.contextTokens ?? 0}
+            window={props.usage?.contextWindow ?? 0}
+          />
+        </div>
       </div>
     </div>
   );

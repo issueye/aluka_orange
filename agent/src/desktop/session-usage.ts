@@ -22,6 +22,10 @@ export interface SessionUsageView {
   totals: SessionUsageTotals;
   /** 当前模型成本字段若全为 0，则 estimatedCost 为 undefined */
   estimatedCostUsd?: number;
+  /** 最近一轮请求占用的 token（用于上下文占比环） */
+  contextTokens: number;
+  /** 当前模型上下文窗口 */
+  contextWindow: number;
   authMode: "api_key";
   oauthSupported: false;
   note: string;
@@ -76,6 +80,22 @@ export function sumUsageFromSessionEntries(entries: SessionEntry[]): SessionUsag
   return totals;
 }
 
+/** 最近一条带 usage 的助手消息：该轮 prompt+completion，近似当前上下文占用 */
+export function lastTurnContextTokens(messages: AgentMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role !== "assistant" || !message.usage) continue;
+    const usage = message.usage;
+    const input = Number(usage.input) || 0;
+    const output = Number(usage.output) || 0;
+    if (typeof usage.totalTokens === "number" && Number.isFinite(usage.totalTokens) && usage.totalTokens > 0) {
+      return usage.totalTokens;
+    }
+    return input + output;
+  }
+  return 0;
+}
+
 export function mergeUsageTotals(a: SessionUsageTotals, b: SessionUsageTotals): SessionUsageTotals {
   return {
     input: a.input + b.input,
@@ -92,6 +112,7 @@ export function buildSessionUsageView(opts: {
   messages: AgentMessage[];
   /** 可选：模型单价（$/M tokens）；全 0 则不估费 */
   cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  contextWindow?: number;
 }): SessionUsageView {
   const totals = sumUsageFromMessages(opts.messages);
   let estimatedCostUsd: number | undefined;
@@ -106,10 +127,16 @@ export function buildSessionUsageView(opts: {
         1_000_000;
     }
   }
+  const contextWindow =
+    typeof opts.contextWindow === "number" && Number.isFinite(opts.contextWindow) && opts.contextWindow > 0
+      ? Math.floor(opts.contextWindow)
+      : 0;
   return {
     sessionId: opts.sessionId,
     totals,
     estimatedCostUsd,
+    contextTokens: lastTurnContextTokens(opts.messages),
+    contextWindow,
     authMode: "api_key",
     oauthSupported: false,
     note: "Auth is API key only. OAuth and live provider quotas are not supported in Aluka Desktop.",

@@ -71,6 +71,10 @@ export type SessionUsageView = {
     calls: number;      // API 调用次数
   };
   estimatedCostUsd?: number; // 预估费用（美元）
+  /** 最近一轮请求占用的 token（上下文占比环） */
+  contextTokens?: number;
+  /** 当前模型上下文窗口 */
+  contextWindow?: number;
   note: string;
 };
 

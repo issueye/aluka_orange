@@ -16,7 +16,10 @@ import { ChatView } from "./views/ChatView.tsx";
 import { SettingsView } from "./views/SettingsView.tsx";
 import { ExtensionsView } from "./views/ExtensionsView.tsx";
 import { Button, Input } from "./components/index.ts";
-import { ExtensionUiModal, type ExtensionUiResponse } from "./components/ExtensionUiModal.tsx";
+import {
+  ExtensionUiModal,
+  type ExtensionUiResponse,
+} from "./components/ExtensionUiModal.tsx";
 import type {
   ChooseWorkspaceResult,
   ExtensionUiRequest,
@@ -48,32 +51,32 @@ import "./styles.css";
  */
 export function App() {
   // ── 状态管理 ──
-  const [status, setStatus] = useState("连接中…");          // 底部状态栏文本
-  const [idleStatus, setIdleStatus] = useState("就绪");      // 空闲时的状态文本
-  const [view, setView] = useState<ShellView>("chat");       // 当前视图：对话/设置/扩展
+  const [status, setStatus] = useState("连接中…"); // 底部状态栏文本
+  const [idleStatus, setIdleStatus] = useState("就绪"); // 空闲时的状态文本
+  const [view, setView] = useState<ShellView>("chat"); // 当前视图：对话/设置/扩展
   const [sessions, setSessions] = useState<SessionSummary[]>([]); // 当前工作区会话（标题回退）
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
-  const [wsPathOpen, setWsPathOpen] = useState(false);       // 「输入路径」弹窗开关
-  const [wsPathDraft, setWsPathDraft] = useState("");        // 弹窗路径草稿
+  const [wsPathOpen, setWsPathOpen] = useState(false); // 「输入路径」弹窗开关
+  const [wsPathDraft, setWsPathDraft] = useState(""); // 弹窗路径草稿
   const [wsPickMode, setWsPickMode] = useState<"latest" | "new">("latest");
   const [activeId, setActiveId] = useState<string | undefined>(); // 当前活跃会话 ID
-  const [timeline, setTimeline] = useState<TimelineItem[]>([]);   // 当前会话时间线
-  const [busy, setBusy] = useState(false);                        // 是否正在处理请求
-  const [prompt, setPrompt] = useState("");                      // 输入框内容
-  const [streaming, setStreaming] = useState("");                // 正在流式输出的文本
-  const [settings, setSettings] = useState<SettingsState>({});   // 用户设置
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]); // 当前会话时间线
+  const [busy, setBusy] = useState(false); // 是否正在处理请求
+  const [prompt, setPrompt] = useState(""); // 输入框内容
+  const [streaming, setStreaming] = useState(""); // 正在流式输出的文本
+  const [settings, setSettings] = useState<SettingsState>({}); // 用户设置
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]); // 可用模型列表
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set()); // 正在运行的会话（含后台）
   const [usage, setUsage] = useState<SessionUsageView | undefined>(); // 会话用量统计
   const [updateHint, setUpdateHint] = useState(
     "可选：设置环境变量 ALUKA_DESKTOP_RELEASES_URL 指向 GitHub releases/latest JSON。",
   );
-  const [about, setAbout] = useState("");                       // 关于信息
-  const [toasts, setToasts] = useState<Toast[]>([]);            // Toast 通知列表
+  const [about, setAbout] = useState(""); // 关于信息
+  const [toasts, setToasts] = useState<Toast[]>([]); // Toast 通知列表
   const [modal, setModal] = useState<ExtensionUiRequest | undefined>(); // 扩展 UI 弹窗请求
   const [selectChoice, setSelectChoice] = useState<string | undefined>(); // 弹窗选择结果
-  const [modalInput, setModalInput] = useState("");             // 弹窗输入内容
-  const toastSeq = useRef(0);                                    // Toast 序列号
+  const [modalInput, setModalInput] = useState(""); // 弹窗输入内容
+  const toastSeq = useRef(0); // Toast 序列号
   const timelineCache = useRef<Record<string, TimelineItem[]>>({});
   const sessionRef = useRef<{ cwd?: string; id?: string }>({});
   const streamingRef = useRef("");
@@ -91,11 +94,17 @@ export function App() {
   const theme = settings.theme === "light" ? "light" : "dark";
 
   /** 显示 Toast 通知，4.5 秒后自动消失 */
-  const toast = useCallback((message: string, level: Toast["level"] = "info") => {
-    const id = ++toastSeq.current;
-    setToasts((prev) => [...prev, { id, message, level }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
-  }, []);
+  const toast = useCallback(
+    (message: string, level: Toast["level"] = "info") => {
+      const id = ++toastSeq.current;
+      setToasts((prev) => [...prev, { id, message, level }]);
+      setTimeout(
+        () => setToasts((prev) => prev.filter((t) => t.id !== id)),
+        4500,
+      );
+    },
+    [],
+  );
 
   /** 刷新会话列表与工作区树 */
   const refreshSessions = useCallback(async () => {
@@ -120,22 +129,35 @@ export function App() {
   const loadSettings = useCallback(async () => {
     const s = await rpc<SettingsState>("getSettings");
     setSettings(s ?? {});
-    document.documentElement.setAttribute("data-theme", s?.theme === "light" ? "light" : "dark");
+    document.documentElement.setAttribute(
+      "data-theme",
+      s?.theme === "light" ? "light" : "dark",
+    );
     const options = (await rpc<ModelOption[]>("listModelOptions")) ?? [];
     setModelOptions(options);
   }, []);
 
   /** 把时间线写回本地缓存（按 cwd + id 键） */
-  const rememberTimeline = useCallback((cwd: string | undefined, id: string | undefined, items: TimelineItem[]) => {
-    const key = sessionKey(cwd, id);
-    if (key) timelineCache.current[key] = items;
-  }, []);
+  const rememberTimeline = useCallback(
+    (
+      cwd: string | undefined,
+      id: string | undefined,
+      items: TimelineItem[],
+    ) => {
+      const key = sessionKey(cwd, id);
+      if (key) timelineCache.current[key] = items;
+    },
+    [],
+  );
 
   /** 拉取 host 时间线，失败时回退本地缓存 */
   const fetchHostTimeline = useCallback(async (cwd?: string, id?: string) => {
     try {
       const raw = await rpc<unknown>("getTimeline");
-      return preferTimeline(readTimelinePayload(raw), timelineCache.current[sessionKey(cwd, id)] ?? []);
+      return preferTimeline(
+        readTimelinePayload(raw),
+        timelineCache.current[sessionKey(cwd, id)] ?? [],
+      );
     } catch {
       return timelineCache.current[sessionKey(cwd, id)] ?? [];
     }
@@ -148,25 +170,36 @@ export function App() {
     async (opened: OpenedSession) => {
       const leftover = streamingRef.current.trim();
       if (leftover) {
-        const prevKey = sessionKey(sessionRef.current.cwd, sessionRef.current.id);
+        const prevKey = sessionKey(
+          sessionRef.current.cwd,
+          sessionRef.current.id,
+        );
         if (prevKey) {
           const prev = timelineCache.current[prevKey] ?? [];
           const last = prev[prev.length - 1];
           if (!(last?.role === "assistant" && last.text === leftover)) {
             timelineCache.current[prevKey] = [
               ...prev,
-              { id: `a-${Date.now()}-park`, role: "assistant", text: leftover, timestamp: Date.now() },
+              {
+                id: `a-${Date.now()}-park`,
+                role: "assistant",
+                text: leftover,
+                timestamp: Date.now(),
+              },
             ];
           }
         }
       }
-      setActiveId(opened.id);
+      setActiveId(opened.id || undefined);
       const s = await rpc<SettingsState>("getSettings");
       setSettings({ ...s, cwd: opened.cwd });
-      sessionRef.current = { cwd: opened.cwd, id: opened.id };
+      sessionRef.current = { cwd: opened.cwd, id: opened.id || undefined };
       const next = preferTimeline(
         await fetchHostTimeline(opened.cwd, opened.id),
-        preferTimeline(opened.timeline ?? [], timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? []),
+        preferTimeline(
+          opened.timeline ?? [],
+          timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? [],
+        ),
       );
       rememberTimeline(opened.cwd, opened.id, next);
       setTimeline(next);
@@ -205,13 +238,18 @@ export function App() {
   );
 
   const createNewChat = useCallback(async () => {
-    const created = await rpc<OpenedSession>("createSession", { cwd: settings.cwd });
+    const created = await rpc<OpenedSession>("createSession", {
+      cwd: settings.cwd,
+    });
     await applyOpened({ ...created, timeline: [] });
   }, [applyOpened, settings.cwd]);
 
   const selectWorkspace = useCallback(
     async (dir: string, mode: "latest" | "new" = "latest") => {
-      const opened = await rpc<OpenedSession>("selectWorkspace", { path: dir, mode });
+      const opened = await rpc<OpenedSession>("selectWorkspace", {
+        path: dir,
+        mode,
+      });
       await applyOpened(opened);
     },
     [applyOpened],
@@ -246,47 +284,54 @@ export function App() {
   }, []);
 
   const createTempWorkspace = useCallback(async () => {
-    const opened = await rpc<OpenedSession>("createTempWorkspace", { mode: "new" });
+    const opened = await rpc<OpenedSession>("createTempWorkspace", {
+      mode: "new",
+    });
     await applyOpened(opened);
     toast("已使用临时工作区", "info");
   }, [applyOpened, toast]);
 
   const addWorkspaceByPath = useCallback(
     async (dir: string, mode: "latest" | "new" = "latest") => {
-      const opened = await rpc<OpenedSession>("addWorkspace", { path: dir, mode });
+      const opened = await rpc<OpenedSession>("addWorkspace", {
+        path: dir,
+        mode,
+      });
       await applyOpened(opened);
     },
     [applyOpened],
   );
 
+  const applyOpenedRef = useRef(applyOpened);
+  applyOpenedRef.current = applyOpened;
+  const pickingFolderRef = useRef(false);
+
   const chooseWorkspace = useCallback(
-    async (mode: "latest" | "new") => {
-      try {
-        const result = await rpc<ChooseWorkspaceResult>("chooseWorkspace", { mode });
-        if (result?.cancelled) return;
-        if (!result) {
-          setWsPickMode(mode);
+    (mode: "latest" | "new") => {
+      if (pickingFolderRef.current) return;
+      pickingFolderRef.current = true;
+      setWsPickMode(mode);
+      void rpc<{ pending?: boolean }>("chooseWorkspace", { mode }).catch(
+        (err) => {
+          pickingFolderRef.current = false;
+          toast(err instanceof Error ? err.message : String(err), "error");
           setWsPathDraft(settings.cwd ?? "");
           setWsPathOpen(true);
-          return;
-        }
-        await applyOpened(result);
-      } catch (err) {
-        toast(err instanceof Error ? err.message : String(err), "error");
-        setWsPickMode(mode);
-        setWsPathDraft(settings.cwd ?? "");
-        setWsPathOpen(true);
-      }
+        },
+      );
     },
-    [applyOpened, settings.cwd, toast],
+    [settings.cwd, toast],
   );
 
   /** 打开「输入路径」弹窗（对话空态 / 设置页共用） */
-  const openPathDialog = useCallback((mode: "latest" | "new") => {
-    setWsPickMode(mode);
-    setWsPathDraft(settings.cwd ?? "");
-    setWsPathOpen(true);
-  }, [settings.cwd]);
+  const openPathDialog = useCallback(
+    (mode: "latest" | "new") => {
+      setWsPickMode(mode);
+      setWsPathDraft(settings.cwd ?? "");
+      setWsPathOpen(true);
+    },
+    [settings.cwd],
+  );
 
   /**
    * 初始化 Effect：等待 Host 就绪，加载所有数据，发送 ui-ready 事件
@@ -301,10 +346,12 @@ export function App() {
         setIdleStatus(idle);
         setStatus(idle);
         setAbout(`Aluka Desktop ${info.productVersion} · 阶段 ${info.phase}`);
-        const active = await rpc<{ id?: string; cwd?: string }>("getActiveSessionId");
-        setActiveId(active?.id);
+        const active = await rpc<{ id?: string; cwd?: string }>(
+          "getActiveSessionId",
+        );
+        setActiveId(active?.id || undefined);
         if (active?.cwd) setSettings((s) => ({ ...s, cwd: active.cwd }));
-        sessionRef.current = { cwd: active?.cwd, id: active?.id };
+        sessionRef.current = { cwd: active?.cwd, id: active?.id || undefined };
         if (active?.id) {
           const items = await fetchHostTimeline(active.cwd, active.id);
           rememberTimeline(active.cwd, active.id, items);
@@ -313,7 +360,11 @@ export function App() {
         await refreshSessions();
         await loadSettings();
         await refreshUsage(active?.id);
-        bridge().events.emit("ui-ready", { at: Date.now(), phase: 5, ui: "zeno-react" });
+        bridge().events.emit("ui-ready", {
+          at: Date.now(),
+          phase: 5,
+          ui: "zeno-react",
+        });
       } catch (err) {
         setStatus(err instanceof Error ? err.message : String(err));
         toast(String(err), "error");
@@ -322,7 +373,14 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [fetchHostTimeline, loadSettings, rememberTimeline, refreshSessions, refreshUsage, toast]);
+  }, [
+    fetchHostTimeline,
+    loadSettings,
+    rememberTimeline,
+    refreshSessions,
+    refreshUsage,
+    toast,
+  ]);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -335,7 +393,9 @@ export function App() {
    * 多会话并行：事件按 sessionId 路由，非活跃会话只更新运行标记与列表。
    */
   useEffect(() => {
-    const commitTimeline = (updater: (prev: TimelineItem[]) => TimelineItem[]) => {
+    const commitTimeline = (
+      updater: (prev: TimelineItem[]) => TimelineItem[],
+    ) => {
       setTimeline((prev) => {
         const next = updater(prev);
         rememberTimeline(sessionRef.current.cwd, sessionRef.current.id, next);
@@ -391,10 +451,16 @@ export function App() {
         if (leftover) {
           commitTimeline((prev) => {
             const last = prev[prev.length - 1];
-            if (last?.role === "assistant" && last.text === leftover) return prev;
+            if (last?.role === "assistant" && last.text === leftover)
+              return prev;
             return [
               ...prev,
-              { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "assistant", text: leftover, timestamp: Date.now() },
+              {
+                id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                role: "assistant",
+                text: leftover,
+                timestamp: Date.now(),
+              },
             ];
           });
         }
@@ -408,23 +474,42 @@ export function App() {
         setStreaming(streamingRef.current);
         return;
       }
-      if (event.type === "message_end" && event.role === "user" && event.text != null) {
+      if (
+        event.type === "message_end" &&
+        event.role === "user" &&
+        event.text != null
+      ) {
         commitTimeline((prev) => [
           ...prev,
-          { id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "user", text: event.text!, timestamp: Date.now() },
+          {
+            id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            role: "user",
+            text: event.text!,
+            timestamp: Date.now(),
+          },
         ]);
         return;
       }
-      if (event.type === "message_end" && event.role === "assistant" && event.text != null) {
+      if (
+        event.type === "message_end" &&
+        event.role === "assistant" &&
+        event.text != null
+      ) {
         streamingRef.current = "";
         setStreaming("");
         if (!event.text.trim()) return;
         commitTimeline((prev) => {
           const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.text === event.text) return prev;
+          if (last?.role === "assistant" && last.text === event.text)
+            return prev;
           return [
             ...prev,
-            { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "assistant", text: event.text!, timestamp: Date.now() },
+            {
+              id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              role: "assistant",
+              text: event.text!,
+              timestamp: Date.now(),
+            },
           ];
         });
         return;
@@ -434,7 +519,9 @@ export function App() {
         commitTimeline((prev) => [
           ...prev,
           {
-            id: toolCallId || `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            id:
+              toolCallId ||
+              `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             role: "tool",
             text: "",
             toolName: event.toolName,
@@ -450,7 +537,9 @@ export function App() {
         const toolCallId = event.toolCallId;
         const resultText = String(event.resultText ?? "");
         commitTimeline((prev) => {
-          const index = toolCallId ? prev.findIndex((item) => item.toolCallId === toolCallId) : -1;
+          const index = toolCallId
+            ? prev.findIndex((item) => item.toolCallId === toolCallId)
+            : -1;
           const patch: Partial<TimelineItem> = {
             text: resultText,
             resultText,
@@ -466,7 +555,9 @@ export function App() {
           return [
             ...prev,
             {
-              id: toolCallId || `tr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              id:
+                toolCallId ||
+                `tr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               role: "tool",
               timestamp: Date.now(),
               toolCallId,
@@ -494,14 +585,23 @@ export function App() {
       if (event.type === "error" && event.message) {
         commitTimeline((prev) => [
           ...prev,
-          { id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role: "system", text: event.message!, timestamp: Date.now() },
+          {
+            id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            role: "system",
+            text: event.message!,
+            timestamp: Date.now(),
+          },
         ]);
         setBusy(false);
       }
     };
 
     const onPromptResult = (raw: unknown) => {
-      const result = raw as { ok?: boolean; error?: string; sessionId?: string };
+      const result = raw as {
+        ok?: boolean;
+        error?: string;
+        sessionId?: string;
+      };
       const sid = result?.sessionId;
       if (sid) {
         setBusyIds((prev) => {
@@ -521,7 +621,12 @@ export function App() {
     };
 
     const onShare = (raw: unknown) => {
-      const result = raw as { ok?: boolean; error?: string; gistUrl?: string; gistId?: string };
+      const result = raw as {
+        ok?: boolean;
+        error?: string;
+        gistUrl?: string;
+        gistId?: string;
+      };
       if (result?.ok && result.gistUrl) {
         toast(`已分享 Gist ${result.gistId ?? ""}`, "info");
         setStatus(`已分享 → ${result.gistUrl}`);
@@ -532,9 +637,26 @@ export function App() {
       setStatus(idleStatus);
     };
 
-    /** 安装结果统一在此播报；目录/表单状态由各视图自己的监听同步 */
+    const onWorkspaceChoose = (raw: unknown) => {
+      pickingFolderRef.current = false;
+      const result = raw as ChooseWorkspaceResult & { error?: string };
+      if (!result || typeof result !== "object") return;
+      if (result.cancelled) {
+        if (result.error) {
+          toast(result.error, "error");
+          setWsPathDraft(sessionRef.current.cwd ?? "");
+          setWsPathOpen(true);
+        }
+        return;
+      }
+      void applyOpenedRef.current(result);
+    };
     const onPackageInstall = (raw: unknown) => {
-      const result = raw as { ok?: boolean; error?: string; packageName?: string };
+      const result = raw as {
+        ok?: boolean;
+        error?: string;
+        packageName?: string;
+      };
       if (result?.ok) toast(`扩展包 ${result.packageName} 已安装`, "info");
       else toast(result?.error ?? "安装失败", "error");
     };
@@ -558,16 +680,21 @@ export function App() {
         return;
       }
       if (result?.upToDate) {
-        setUpdateHint(`已是最新（当前 ${result.current}，最新 ${result.latest}）`);
+        setUpdateHint(
+          `已是最新（当前 ${result.current}，最新 ${result.latest}）`,
+        );
         return;
       }
-      setUpdateHint(`发现新版本：${result?.latest}（当前 ${result?.current}）${result?.url ? ` · ${result.url}` : ""}`);
+      setUpdateHint(
+        `发现新版本：${result?.latest}（当前 ${result?.current}）${result?.url ? ` · ${result.url}` : ""}`,
+      );
     };
 
     const bus = bridge().events;
     bus.on("runtime.event", onRuntime);
     bus.on("prompt.result", onPromptResult);
     bus.on("session.share", onShare);
+    bus.on("workspace.choose", onWorkspaceChoose);
     bus.on("package.install", onPackageInstall);
     bus.on("update.check", onUpdateCheck);
 
@@ -575,6 +702,7 @@ export function App() {
       bus.off("runtime.event", onRuntime);
       bus.off("prompt.result", onPromptResult);
       bus.off("session.share", onShare);
+      bus.off("workspace.choose", onWorkspaceChoose);
       bus.off("package.install", onPackageInstall);
       bus.off("update.check", onUpdateCheck);
     };
@@ -604,9 +732,12 @@ export function App() {
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || busy) return;
-    setPrompt("");
-    setBusy(true);
     try {
+      if (!sessionRef.current.id) {
+        await createNewChat();
+      }
+      setPrompt("");
+      setBusy(true);
       await rpc("sendPrompt", { text });
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), "error");
@@ -615,14 +746,33 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={theme}>
-      <aside className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`} data-aluka-drag="no-drag">
+    <div
+      className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${view === "settings" ? "settings-mode" : ""} ${sidebarCollapsed && view !== "settings" ? "sidebar-collapsed" : ""}`}
+      data-theme={theme}
+    >
+      <aside
+        className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`}
+        data-aluka-drag="no-drag"
+      >
         {sidebarCollapsed ? (
           <div className="sidebar-rail" data-aluka-drag>
-            <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="展开侧栏" onClick={() => toggleSidebar(false)}>
+            <button
+              type="button"
+              className="icon-btn"
+              data-aluka-drag="no-drag"
+              title="展开侧栏"
+              onClick={() => toggleSidebar(false)}
+            >
               <PanelLeft size={16} />
             </button>
-            <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="新建会话" onClick={() => void createNewChat()}>
+
+            <button
+              type="button"
+              className="icon-btn"
+              data-aluka-drag="no-drag"
+              title="新建会话"
+              onClick={() => void createNewChat()}
+            >
               <SquarePen size={16} />
             </button>
           </div>
@@ -643,62 +793,129 @@ export function App() {
         )}
 
         <div className="sidebar-foot">
-          <button type="button" className={`nav ghost-btn ${view === "extensions" ? "active" : ""}`} onClick={() => setView("extensions")}>
+          <button
+            type="button"
+            className={`nav ghost-btn ${view === "extensions" ? "active" : ""}`}
+            onClick={() => setView("extensions")}
+          >
             <Boxes size={16} /> <span>扩展</span>
           </button>
-          <button type="button" className={`nav ghost-btn ${view === "settings" ? "active" : ""}`} onClick={() => {
-            setView("settings");
-            void loadSettings();
-            void refreshUsage(activeId);
-          }}>
+          <button
+            type="button"
+            className={`nav ghost-btn ${view === "settings" ? "active" : ""}`}
+            onClick={() => {
+              setView("settings");
+              void loadSettings();
+              void refreshUsage(activeId);
+            }}
+          >
             <SettingsIcon size={16} /> <span>设置</span>
           </button>
-          <div className="status-pill" title={status}>{status}</div>
+          <div className="status-pill" title={status}>
+            {status}
+          </div>
         </div>
       </aside>
 
       <section className="main-col">
         <header className="thread-header" data-aluka-drag>
-          {sidebarCollapsed ? (
-            <button type="button" className="icon-btn" data-aluka-drag="no-drag" title="展开侧栏" onClick={() => toggleSidebar(false)}>
+          {sidebarCollapsed && view === "chat" ? (
+            <button
+              type="button"
+              className="icon-btn"
+              data-aluka-drag="no-drag"
+              title="展开侧栏"
+              onClick={() => toggleSidebar(false)}
+            >
               <PanelLeft size={16} />
             </button>
           ) : null}
-          <div className="title" title={view === "chat" ? activeTitle : undefined}>
-            {view === "chat" ? activeTitle : view === "settings" ? "设置" : "扩展与技能"}
+          <div
+            className="title"
+            title={view === "chat" ? activeTitle : undefined}
+          >
+            {view === "chat"
+              ? activeTitle
+              : view === "settings"
+                ? "设置"
+                : "扩展与技能"}
           </div>
           {view === "chat" ? (
             <div className="thread-actions" data-aluka-drag="no-drag">
-              <button type="button" className="header-action" title="导出会话" onClick={() => void (async () => {
-                const result = await rpc<{ ok?: boolean; error?: string; path?: string; format?: string; bytes?: number }>(
-                  "exportSession",
-                  { format: "markdown", id: activeId },
-                );
-                if (result?.ok && result.path) {
-                  toast(`已导出 ${result.format}（${result.bytes ?? 0} 字节）`, "info");
-                  setStatus(`已导出 → ${result.path}`);
-                  setTimeout(() => setStatus(idleStatus), 2500);
-                } else toast(result?.error ?? "导出失败", "error");
-              })()}>
+              <button
+                type="button"
+                className="header-action"
+                title="导出会话"
+                onClick={() =>
+                  void (async () => {
+                    const result = await rpc<{
+                      ok?: boolean;
+                      error?: string;
+                      path?: string;
+                      format?: string;
+                      bytes?: number;
+                    }>("exportSession", { format: "markdown", id: activeId });
+                    if (result?.ok && result.path) {
+                      toast(
+                        `已导出 ${result.format}（${result.bytes ?? 0} 字节）`,
+                        "info",
+                      );
+                      setStatus(`已导出 → ${result.path}`);
+                      setTimeout(() => setStatus(idleStatus), 2500);
+                    } else toast(result?.error ?? "导出失败", "error");
+                  })()
+                }
+              >
                 <Download size={15} />
               </button>
-              <button type="button" className="header-action" title="分享会话" onClick={() => {
-                setStatus("正在通过 gh gist 分享…");
-                void rpc("shareSession", { id: activeId }).catch((err) => {
-                  toast(err instanceof Error ? err.message : String(err), "error");
-                  setStatus(idleStatus);
-                });
-              }}>
+              <button
+                type="button"
+                className="header-action"
+                title="分享会话"
+                onClick={() => {
+                  setStatus("正在通过 gh gist 分享…");
+                  void rpc("shareSession", { id: activeId }).catch((err) => {
+                    toast(
+                      err instanceof Error ? err.message : String(err),
+                      "error",
+                    );
+                    setStatus(idleStatus);
+                  });
+                }}
+              >
                 <Share2 size={15} />
               </button>
             </div>
           ) : null}
           <div className="window-controls" data-aluka-drag="no-drag">
-            <button type="button" title="最小化" onClick={() => bridge().window.minimize()}><Minus size={14} /></button>
-            <button type="button" title="最大化" onClick={() => bridge().window.toggleMaximize()}><Square size={11} /></button>
-            <button type="button" className="close" title="退出" onClick={() => void rpc("quitApp").catch(() => {
-              try { bridge().window.close(); } catch { /* ignore */ }
-            })}>
+            <button
+              type="button"
+              title="最小化"
+              onClick={() => bridge().window.minimize()}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              type="button"
+              title="最大化"
+              onClick={() => bridge().window.toggleMaximize()}
+            >
+              <Square size={11} />
+            </button>
+            <button
+              type="button"
+              className="close"
+              title="退出"
+              onClick={() =>
+                void rpc("quitApp").catch(() => {
+                  try {
+                    bridge().window.close();
+                  } catch {
+                    /* ignore */
+                  }
+                })
+              }
+            >
               <X size={14} />
             </button>
           </div>
@@ -761,15 +978,22 @@ export function App() {
 
       <div className="toast-stack">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.level}`}>{t.message}</div>
+          <div key={t.id} className={`toast ${t.level}`}>
+            {t.message}
+          </div>
         ))}
       </div>
 
-      <div className={`modal ${modal || wsPathOpen ? "" : "hidden"}`} data-aluka-drag="no-drag">
+      <div
+        className={`modal ${modal || wsPathOpen ? "" : "hidden"}`}
+        data-aluka-drag="no-drag"
+      >
         {wsPathOpen ? (
           <div className="modal-card">
             <h3>打开工作区</h3>
-            <p className="modal-body">输入文件夹路径。未选择时，新对话会使用自动生成的临时目录。</p>
+            <p className="modal-body">
+              输入文件夹路径。未选择时，新对话会使用自动生成的临时目录。
+            </p>
             <Input
               className="modal-input"
               label="文件夹路径"
@@ -778,7 +1002,9 @@ export function App() {
               onChange={setWsPathDraft}
             />
             <div className="modal-actions">
-              <Button variant="secondary" onClick={() => setWsPathOpen(false)}>取消</Button>
+              <Button variant="secondary" onClick={() => setWsPathOpen(false)}>
+                取消
+              </Button>
               <Button
                 onClick={() => {
                   const dir = wsPathDraft.trim();

@@ -1,16 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
-import { Activity, CloudDownload, Pencil, Plus, Trash2, KeyRound } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  CloudDownload,
+  Eye,
+  EyeOff,
+  Hexagon,
+  Pencil,
+  Plug,
+  Plus,
+  Puzzle,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { rpc } from "./bridge.ts";
-import { Button, Input, SectionHead, Select, Textarea } from "./components/index.ts";
+import { Button, Field, Input, Select } from "./components/index.ts";
 
 /**
  * ProvidersPanel - 供应商管理面板
  *
- * 两个分区：
- * 1. 内置厂商目录：Anthropic / OpenAI / Gemini / Kimi / GLM / DeepSeek 等，
- *    厂商信息与精编模型来自 agent 侧内置目录（pi models.dev 快照），
- *    填密钥即用；也支持只设环境变量后直接选模型。
- * 2. 自定义供应商：读写 ~/.aluka/agent/models.json 的完全自定义条目。
+ * 主从布局：左侧按「内置厂商 / 扩展 / 自定义供应商」分组导航，
+ * 右侧编辑选中供应商的 Base URL、API 格式、密钥与模型卡片。
  *
  * 密钥解析顺序（agent 侧）：显式 > settings.apiKey > models.json > 厂商专属环境变量。
  */
@@ -86,10 +95,10 @@ type Draft = {
   baseUrl: string;        // 接口地址
   api: ApiKind;           // API 类型
   modelId: string;        // 模型 ID
-  modelName: string;      // 显示名称
+  modelName: string;      // 模型别名
+  contextWindow: string;  // 上下文长度（支持 128000 / 128K / 1M）
   apiKey: string;         // API 密钥
   proxy: string;          // HTTP/SOCKS 代理
-  modelIdsText: string;   // 批量添加：每行一个模型 ID
   previousProvider?: string;  // 编辑时的原供应商 ID（用于重命名）
   previousModelId?: string;   // 编辑时的原模型 ID
 };
@@ -110,26 +119,58 @@ const EMPTY_DRAFT: Draft = {
   api: "openai-completions",
   modelId: "",
   modelName: "",
+  contextWindow: "",
   apiKey: "",
   proxy: "",
-  modelIdsText: "",
 };
 
-function displayProxy(proxy: string): string {
-  try {
-    const url = new URL(proxy);
-    if (url.password) url.password = "****";
-    let text = url.toString();
-    if (text.endsWith("/") && url.pathname === "/") text = text.slice(0, -1);
-    return text;
-  } catch {
-    return proxy;
-  }
+function parseContextWindow(raw: string): number | undefined {
+  const text = raw.trim().replace(/[,_\s]/g, "");
+  if (!text) return undefined;
+  const match = text.match(/^(\d+(?:\.\d+)?)([kKmM])?$/);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  const unit = match[2]?.toLowerCase();
+  if (unit === "k") return Math.round(n * 1000);
+  if (unit === "m") return Math.round(n * 1_000_000);
+  return Math.floor(n);
 }
 
-function parseModelIds(text: string): string[] {
-  return [...new Set(text.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean))];
+function readContextWindow(raw: string): number | undefined {
+  if (!raw.trim()) return undefined;
+  const value = parseContextWindow(raw);
+  if (value == null) throw new Error("上下文长度无效，请输入数字，或如 128K、1M");
+  return value;
 }
+
+function formatContextWindow(n?: number): string | undefined {
+  if (!n || n <= 0) return undefined;
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+  }
+  if (n >= 1000) return `${Math.round(n / 1000)}K`;
+  return String(n);
+}
+
+const API_OPTIONS = [
+  { value: "openai-completions", label: "Chat Completions (/chat/completions)" },
+  { value: "openai-responses", label: "Responses (/responses)" },
+  { value: "anthropic-messages", label: "Anthropic Messages" },
+] as const;
+
+type NavItem = {
+  id: string;
+  name: string;
+  group: string;
+  configured: boolean;
+  hasKey: boolean;
+  local?: boolean;
+  source?: "builtin" | "extension";
+  builtin?: BuiltinProviderView;
+  custom?: ModelsJsonProviderView;
+};
 
 function uniqueIds(ids: string[]): string[] {
   return [...new Set(ids)];
@@ -158,16 +199,20 @@ export function ProvidersPanel(props: {
 }) {
   const [config, setConfig] = useState<ModelsJsonConfigView | undefined>(); // 当前配置
   const [builtin, setBuiltin] = useState<BuiltinProviderView[] | undefined>(); // 内置厂商目录
-  const [dialogOpen, setDialogOpen] = useState(false);   // 添加/编辑弹窗是否打开
-  const [keyDialog, setKeyDialog] = useState<string | undefined>(); // API 密钥弹窗的目标供应商
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [modelDialog, setModelDialog] = useState<"add" | "edit" | undefined>();
   const [builtinKeyDialog, setBuiltinKeyDialog] = useState<BuiltinProviderView | undefined>(); // 内置厂商启用弹窗
   const [keyDraft, setKeyDraft] = useState("");           // API 密钥输入草稿
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT); // 表单草稿
-  const [addModelsMode, setAddModelsMode] = useState(false);
   const [fetchPicker, setFetchPicker] = useState<FetchPicker | undefined>();
   const [busy, setBusy] = useState(false);                 // 操作进行中标记
   const [probeBusy, setProbeBusy] = useState<string | undefined>(); // 测试连接中的目标
   const [refreshBusy, setRefreshBusy] = useState<string | undefined>(); // 刷新模型中的目标
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [query, setQuery] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [nameEditing, setNameEditing] = useState(false);
+  const [form, setForm] = useState({ name: "", baseUrl: "", api: "openai-completions" as ApiKind, apiKey: "", proxy: "" });
 
   /** 刷新 models.json 配置与内置厂商目录 */
   const refresh = useCallback(async () => {
@@ -183,34 +228,107 @@ export function ProvidersPanel(props: {
     void refresh();
   }, [refresh]);
 
-  /** 打开添加弹窗，可选预填预设 */
+  const navItems = useMemo<NavItem[]>(() => {
+    const configured = config?.providers ?? [];
+    const byId = new Map(configured.map((p) => [p.provider, p]));
+    const items: NavItem[] = [];
+    for (const def of builtin ?? []) {
+      const custom = byId.get(def.id);
+      items.push({
+        id: def.id,
+        name: def.name,
+        group: def.source === "extension" ? "扩展" : "内置厂商",
+        configured: Boolean(custom),
+        hasKey: Boolean(def.local || def.source === "extension" || custom?.hasApiKeyField),
+        local: def.local,
+        source: def.source,
+        builtin: def,
+        custom,
+      });
+      byId.delete(def.id);
+    }
+    for (const custom of byId.values()) {
+      items.push({
+        id: custom.provider,
+        name: custom.provider,
+        group: "自定义供应商",
+        configured: true,
+        hasKey: custom.hasApiKeyField,
+        custom,
+      });
+    }
+    return items;
+  }, [builtin, config]);
+
+  const visibleNav = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? navItems.filter((item) => item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q))
+      : navItems;
+    const groups: Array<{ label: string; items: NavItem[] }> = [];
+    for (const item of filtered) {
+      const last = groups[groups.length - 1];
+      if (last?.label === item.group) last.items.push(item);
+      else groups.push({ label: item.group, items: [item] });
+    }
+    return groups;
+  }, [navItems, query]);
+
+  useEffect(() => {
+    setSelectedId((prev) => {
+      if (prev && navItems.some((item) => item.id === prev)) return prev;
+      if (props.activeProvider && navItems.some((item) => item.id === props.activeProvider)) {
+        return props.activeProvider;
+      }
+      const firstConfigured = navItems.find((item) => item.configured);
+      return firstConfigured?.id ?? navItems[0]?.id;
+    });
+  }, [navItems, props.activeProvider]);
+
+  const selected = navItems.find((item) => item.id === selectedId);
+
+  useEffect(() => {
+    setShowKey(false);
+    setNameEditing(false);
+    const custom = selected?.custom;
+    const builtinDef = selected?.builtin;
+    setForm({
+      name: custom?.provider ?? builtinDef?.name ?? selected?.id ?? "",
+      baseUrl: custom?.baseUrl ?? builtinDef?.baseUrl ?? "",
+      api: coerceApiKind(custom?.api ?? builtinDef?.api),
+      apiKey: "",
+      proxy: custom?.proxy ?? "",
+    });
+  }, [selected?.id, selected?.custom, selected?.builtin]);
+
+  /** 打开添加供应商弹窗，可选预填预设 */
   function openCreate(preset?: Partial<Draft>) {
-    setAddModelsMode(false);
+    setModelDialog(undefined);
     setDraft({ ...EMPTY_DRAFT, ...preset });
-    setDialogOpen(true);
+    setProviderDialogOpen(true);
   }
 
-  /** 打开编辑弹窗，预填现有供应商和模型信息 */
+  /** 打开编辑模型弹窗 */
   function openEdit(provider: ModelsJsonProviderView, modelId: string) {
     const model = provider.models.find((m) => m.id === modelId);
-    setAddModelsMode(false);
+    setProviderDialogOpen(false);
     setDraft({
       provider: provider.provider,
       baseUrl: provider.baseUrl ?? "",
       api: coerceApiKind(provider.api),
       modelId: model?.id ?? modelId,
       modelName: model?.name ?? "",
+      contextWindow: model?.contextWindow ? String(model.contextWindow) : "",
       apiKey: "",
       proxy: provider.proxy ?? "",
-      modelIdsText: "",
       previousProvider: provider.provider,
       previousModelId: modelId,
     });
-    setDialogOpen(true);
+    setModelDialog("edit");
   }
 
   function openAddModels(provider: ModelsJsonProviderView) {
-    setAddModelsMode(true);
+    setProviderDialogOpen(false);
     setDraft({
       ...EMPTY_DRAFT,
       provider: provider.provider,
@@ -219,41 +337,81 @@ export function ProvidersPanel(props: {
       proxy: provider.proxy ?? "",
       previousProvider: provider.provider,
     });
-    setDialogOpen(true);
+    setModelDialog("add");
   }
 
-  /** 保存供应商/模型草稿到 models.json */
-  async function saveDraft(e?: React.FormEvent) {
+  function closeProviderDialog() {
+    setProviderDialogOpen(false);
+  }
+
+  function closeModelDialog() {
+    setModelDialog(undefined);
+  }
+
+  /** 保存新供应商到 models.json */
+  async function saveProvider(e?: React.FormEvent) {
     e?.preventDefault();
     setBusy(true);
     try {
-      if (addModelsMode) {
-        const models = parseModelIds(draft.modelIdsText).map((id) => ({ id }));
-        const next = await rpc<ModelsJsonConfigView>("addProviderModels", {
-          provider: draft.provider.trim(),
-          models,
-        });
-        setConfig(next);
-        setDialogOpen(false);
-        setAddModelsMode(false);
-        props.onToast(`已向 ${draft.provider} 添加 ${models.length} 个模型`, "info");
-        props.onActiveChanged();
-        return;
-      }
       const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
         provider: draft.provider.trim(),
         baseUrl: draft.baseUrl.trim(),
         api: draft.api,
         modelId: draft.modelId.trim(),
         modelName: draft.modelName.trim() || undefined,
+        contextWindow: readContextWindow(draft.contextWindow),
         apiKey: draft.apiKey.trim() || undefined,
         proxy: draft.proxy,
-        previousProvider: draft.previousProvider,
-        previousModelId: draft.previousModelId,
       });
       setConfig(next);
-      setDialogOpen(false);
+      closeProviderDialog();
+      setSelectedId(draft.provider.trim());
       props.onToast("供应商已保存", "info");
+      props.onActiveChanged();
+    } catch (err) {
+      props.onToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 保存添加/编辑模型 */
+  async function saveModel(e?: React.FormEvent) {
+    e?.preventDefault();
+    const modelId = draft.modelId.trim();
+    if (!modelId) {
+      props.onToast("请填写模型 ID", "warning");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (modelDialog === "edit") {
+        const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
+          provider: draft.provider.trim(),
+          baseUrl: draft.baseUrl.trim(),
+          api: draft.api,
+          modelId,
+          modelName: draft.modelName.trim() || undefined,
+          contextWindow: readContextWindow(draft.contextWindow),
+          proxy: draft.proxy,
+          previousProvider: draft.previousProvider,
+          previousModelId: draft.previousModelId,
+        });
+        setConfig(next);
+        props.onToast("模型已保存", "info");
+      } else {
+        const next = await rpc<ModelsJsonConfigView>("addProviderModels", {
+          provider: draft.provider.trim(),
+          models: [{
+            id: modelId,
+            name: draft.modelName.trim() || undefined,
+            contextWindow: readContextWindow(draft.contextWindow),
+          }],
+        });
+        setConfig(next);
+        props.onToast(`已向 ${draft.provider} 添加模型 ${modelId}`, "info");
+      }
+      closeModelDialog();
       props.onActiveChanged();
     } catch (err) {
       props.onToast(err instanceof Error ? err.message : String(err), "error");
@@ -280,13 +438,20 @@ export function ProvidersPanel(props: {
           api: def.api,
           modelId: first.id,
           modelName: first.name,
+          contextWindow: first.contextWindow,
+          maxTokens: first.maxTokens,
           apiKey: apiKey.trim() || undefined,
         });
         const rest = def.models.slice(1);
         if (rest.length) {
           next = await rpc<ModelsJsonConfigView>("addProviderModels", {
             provider: def.id,
-            models: rest.map((m) => ({ id: m.id, name: m.name })),
+            models: rest.map((m) => ({
+              id: m.id,
+              name: m.name,
+              contextWindow: m.contextWindow,
+              maxTokens: m.maxTokens,
+            })),
           });
         }
         setConfig(next);
@@ -377,7 +542,7 @@ export function ProvidersPanel(props: {
     setBusy(true);
     try {
       const result = await rpc<{ models?: RemoteModel[] } | RemoteModel[]>("fetchRemoteModels", {
-        provider: draft.previousProvider || (addModelsMode ? draft.provider : undefined),
+        provider: draft.previousProvider || (modelDialog === "add" ? draft.provider : undefined),
         baseUrl: draft.baseUrl.trim() || undefined,
         apiKey: draft.apiKey.trim() || undefined,
         proxy: draft.proxy.trim() || undefined,
@@ -443,8 +608,8 @@ export function ProvidersPanel(props: {
       }
       setConfig(next);
       setFetchPicker(undefined);
-      setDialogOpen(false);
-      setAddModelsMode(false);
+      closeProviderDialog();
+      closeModelDialog();
       props.onToast(`已导入 ${models.length} 个模型`, "info");
       props.onActiveChanged();
     } catch (err) {
@@ -500,28 +665,6 @@ export function ProvidersPanel(props: {
     }
   }
 
-  /** 保存 API 密钥到 models.json */
-  async function saveKey(e?: React.FormEvent) {
-    e?.preventDefault();
-    if (!keyDialog) return;
-    setBusy(true);
-    try {
-      const next = await rpc<ModelsJsonConfigView>("setProviderApiKey", {
-        provider: keyDialog,
-        apiKey: keyDraft.trim(),
-      });
-      setConfig(next);
-      setKeyDialog(undefined);
-      setKeyDraft("");
-      props.onToast(`已保存 ${keyDialog} 的 API 密钥`, "info");
-      props.onActiveChanged();
-    } catch (err) {
-      props.onToast(err instanceof Error ? err.message : String(err), "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   /** 清除指定供应商的 API 密钥 */
   async function clearKey(provider: string) {
     setBusy(true);
@@ -537,304 +680,455 @@ export function ProvidersPanel(props: {
     }
   }
 
+  async function saveProviderMeta(nextForm = form) {
+    const custom = selected?.custom;
+    if (!custom) return;
+    const first = custom.models[0];
+    if (!first) {
+      props.onToast("请先添加一个模型再保存供应商设置", "warning");
+      return;
+    }
+    setBusy(true);
+    try {
+      const renamed = nextForm.name.trim() && nextForm.name.trim() !== custom.provider;
+      const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
+        provider: (renamed ? nextForm.name : custom.provider).trim(),
+        baseUrl: nextForm.baseUrl.trim(),
+        api: nextForm.api,
+        modelId: first.id,
+        modelName: first.name,
+        contextWindow: first.contextWindow,
+        maxTokens: first.maxTokens,
+        apiKey: nextForm.apiKey.trim() || undefined,
+        proxy: nextForm.proxy,
+        previousProvider: custom.provider,
+        previousModelId: first.id,
+      });
+      setConfig(next);
+      if (renamed) setSelectedId(nextForm.name.trim());
+      setForm((d) => ({ ...d, apiKey: "" }));
+      props.onToast("供应商已保存", "info");
+      props.onActiveChanged();
+    } catch (err) {
+      props.onToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveApiKeyInline() {
+    if (!selected) return;
+    const key = form.apiKey.trim();
+    if (!key) return;
+    if (selected.custom) {
+      setBusy(true);
+      try {
+        const next = await rpc<ModelsJsonConfigView>("setProviderApiKey", {
+          provider: selected.custom.provider,
+          apiKey: key,
+        });
+        setConfig(next);
+        setForm((d) => ({ ...d, apiKey: "" }));
+        props.onToast(`已保存 ${selected.custom.provider} 的 API 密钥`, "info");
+        props.onActiveChanged();
+      } catch (err) {
+        props.onToast(err instanceof Error ? err.message : String(err), "error");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (selected.builtin) await enableBuiltin(selected.builtin, key);
+  }
+
+  const models = selected?.custom?.models
+    ?? selected?.builtin?.models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      contextWindow: m.contextWindow,
+      maxTokens: m.maxTokens,
+    }))
+    ?? [];
+
   return (
-    <div className="providers-panel">
-      <div className="providers-head">
-        <SectionHead
-          as="h3"
-          title="模型供应商"
-          hint={`内置厂商填密钥即用；自定义条目写入 ~/.aluka/agent/models.json${config?.path ? `（${config.path}）` : ""}。仅支持 API Key，暂不支持 OAuth。`}
-        />
-      </div>
-      {config?.error ? <p className="hint" style={{ color: "var(--danger)" }}>{config.error}</p> : null}
-
-      {/* ── 内置厂商目录 ── */}
-      <section className="builtin-section">
-        <div className="builtin-section__head">
-          <strong>内置厂商</strong>
-          <span className="hint">{builtin?.length ?? "…"} 家 · 模型信息来自内置目录（models.dev 快照），无需手填</span>
-        </div>
-        <div className="builtin-grid">
-          {(builtin ?? []).map((def) => {
-            const configured = config?.providers.find((p) => p.provider === def.id);
-            const isExtension = def.source === "extension";
-            const keyOk = def.local || isExtension || Boolean(configured?.hasApiKeyField);
-            return (
-              <div key={def.id} className="builtin-card">
-                <header className="builtin-card__head">
-                  <strong title={isExtension ? def.extensionPath : def.id}>{def.name}</strong>
-                  {isExtension ? (
-                    <span className="auth-badge ext">扩展</span>
-                  ) : (
-                    <span className={`auth-badge ${keyOk ? "ok" : "miss"}`}>
-                      {def.local ? "本地" : keyOk ? "密钥已存" : "未配置密钥"}
-                    </span>
-                  )}
-                </header>
-                <p className="hint">{def.description}</p>
-                <p className="builtin-card__meta hint">
-                  {def.baseUrl || "—"}
-                  {def.envKeys.length ? <br /> : null}
-                  {def.envKeys.length ? `环境变量：${def.envKeys.join(" / ")}` : isExtension ? "密钥由扩展管理" : "无需密钥"}
-                </p>
-                {def.models.length ? (
-                  <ul className="builtin-card__models">
-                    {def.models.map((m) => {
-                      const active = props.activeProvider === def.id && props.activeModel === m.id;
-                      return (
-                        <li key={m.id} className={active ? "is-active" : ""}>
-                          <span title={`${m.id} · 上下文 ${m.contextWindow.toLocaleString()} · 最大输出 ${m.maxTokens.toLocaleString()}`}>
-                            {m.name}
-                          </span>
-                          <Button variant="ghost" size="sm" disabled={busy || active} onClick={() => void useModel(def.id, m.id)}>
-                            {active ? "当前" : "使用"}
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="hint">
-                    {def.refreshable
-                      ? "暂无模型目录，点「刷新模型」从接口动态发现。"
-                      : "无内置模型目录，可先测试连接再从接口拉取。"}
-                  </p>
-                )}
-                <footer className="row-actions">
-                  {def.local ? (
-                    <Button variant="secondary" size="sm" disabled={busy} onClick={() => openCreate({
-                      provider: def.id,
-                      baseUrl: def.baseUrl ?? "",
-                      api: coerceApiKind(def.api),
-                    })}>
-                      配置
-                    </Button>
-                  ) : isExtension ? null : (
-                    <Button variant="secondary" size="sm" disabled={busy} onClick={() => {
-                      setBuiltinKeyDialog(def);
-                      setKeyDraft("");
-                    }}>
-                      <KeyRound size={14} /> {configured ? "更新密钥" : "启用"}
-                    </Button>
-                  )}
-                  {def.refreshable ? (
-                    <Button variant="secondary" size="sm" disabled={refreshBusy === def.id || busy} onClick={() => void refreshModels(def)}>
-                      {refreshBusy === def.id ? "刷新中…" : "刷新模型"}
-                    </Button>
-                  ) : null}
-                  <Button variant="ghost" size="sm" disabled={probeBusy === def.id} onClick={() => void probe({ provider: def.id })}>
-                    <Activity size={14} /> {probeBusy === def.id ? "测试中…" : "测试连接"}
-                  </Button>
-                  {def.docsUrl ? (
-                    <a className="builtin-card__link hint" href={def.docsUrl} target="_blank" rel="noreferrer">获取密钥</a>
-                  ) : null}
-                </footer>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── 自定义供应商 ── */}
-      <section className="custom-providers">
-        <div className="builtin-section__head">
-          <strong>自定义供应商</strong>
-          <span className="hint">完全自定义的端点（自建网关、第三方中转等），写入 models.json</span>
-          <div className="row-actions" style={{ marginLeft: "auto" }}>
-            <Button size="sm" disabled={busy} onClick={() => openCreate()}>
-              <Plus size={14} /> 添加
-            </Button>
+    <div className="providers-studio-wrap">
+      {config?.error ? <p className="hint prov-error">{config.error}</p> : null}
+      <div className="providers-studio">
+        <aside className="prov-rail">
+          <div className="prov-rail-search">
+            <Search size={14} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索供应商…"
+            />
           </div>
-        </div>
-        {(config?.providers ?? []).length === 0 ? (
-          <p className="hint">暂无自定义供应商。上方内置厂商已覆盖常用场景；兼容端点（中转 / 自建网关）可点「添加」。</p>
-        ) : (
-          <div className="provider-groups">
-            {(config?.providers ?? []).map((provider) => (
-              <section key={provider.provider} className="provider-group">
-                <header className="provider-group__head">
-                  <div className="provider-group__id">
-                    <strong>{provider.provider}</strong>
-                    <span className={`auth-badge ${provider.hasApiKeyField ? "ok" : "miss"}`}>
-                      {provider.hasApiKeyField ? "已配置密钥" : "缺少密钥"}
-                    </span>
-                  </div>
-                  <p className="provider-group__meta">
-                    {provider.api || "openai-completions"} · {provider.baseUrl || "—"} · {provider.models.length} 个模型
-                    {provider.proxy ? ` · 代理 ${displayProxy(provider.proxy)}` : ""}
-                  </p>
-                  <div className="row-actions">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="测试连接"
-                      disabled={busy || probeBusy === provider.provider}
-                      onClick={() => void probe({
-                        provider: provider.provider,
-                        baseUrl: provider.baseUrl,
-                        api: provider.api,
-                        proxy: provider.proxy,
-                      })}
-                    >
-                      <Activity size={14} />
-                    </Button>
-                    <Button variant="ghost" size="sm" title="设置 API 密钥" disabled={busy} onClick={() => {
-                      setKeyDialog(provider.provider);
-                      setKeyDraft("");
-                    }}>
-                      <KeyRound size={14} />
-                    </Button>
-                    <Button variant="ghost" size="sm" title="添加模型" disabled={busy} onClick={() => openAddModels(provider)}>
-                      <Plus size={14} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="从 /models 接口拉取"
-                      disabled={busy}
-                      onClick={() => void fetchModelsForProvider(provider)}
-                    >
-                      <CloudDownload size={14} />
-                    </Button>
-                    {provider.hasApiKeyField ? (
-                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => void clearKey(provider.provider)}>
-                        清除密钥
-                      </Button>
-                    ) : null}
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => void removeProvider(provider.provider)}>
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </header>
-                {provider.models.map((model) => {
-                  const active =
-                    props.activeProvider === provider.provider && props.activeModel === model.id;
+          <div className="prov-rail-scroll">
+            {visibleNav.length ? visibleNav.map((group) => (
+              <section key={group.label} className="prov-rail-group">
+                <div className="prov-rail-label">{group.label}</div>
+                {group.items.map((item) => {
+                  const Icon = item.source === "extension" ? Puzzle : item.builtin ? Hexagon : Box;
                   return (
-                    <div key={model.id} className={`model-row${active ? " is-active" : ""}`}>
-                      <div className="model-row__name">
-                        <span>{model.name || model.id}</span>
-                        {model.name && model.name !== model.id ? <span className="hint">{model.id}</span> : null}
-                        {active ? <span className="auth-badge ok">当前</span> : null}
-                      </div>
-                      <div className="row-actions">
-                        <Button variant="ghost" size="sm" disabled={busy || active} onClick={() => void useModel(provider.provider, model.id)}>
-                          使用
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled={busy} onClick={() => openEdit(provider, model.id)}>
-                          <Pencil size={14} />
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled={busy} onClick={() => void removeModel(provider.provider, model.id)}>
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
-                    </div>
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`prov-rail-item${item.id === selectedId ? " is-active" : ""}`}
+                      onClick={() => setSelectedId(item.id)}
+                    >
+                      <Icon size={15} className={`prov-rail-icon${item.builtin && item.source !== "extension" ? " is-catalog" : ""}`} />
+                      <span className="prov-rail-name">{item.name}</span>
+                      <span className={`prov-dot${item.hasKey ? " is-on" : ""}`} title={item.hasKey ? "已配置密钥" : "未配置密钥"} />
+                    </button>
                   );
                 })}
               </section>
-            ))}
+            )) : (
+              <p className="hint prov-rail-empty">{query.trim() ? "无匹配供应商" : "暂无供应商"}</p>
+            )}
           </div>
-        )}
-      </section>
+          <button type="button" className="prov-rail-add" disabled={busy} onClick={() => openCreate()}>
+            <Plus size={15} /> 添加供应商
+          </button>
+        </aside>
 
-      {dialogOpen ? (
-        <div className="modal" data-aluka-drag="no-drag">
-          <form className="modal-card" onSubmit={(e) => void saveDraft(e)}>
-            <h3>
-              {addModelsMode
-                ? `添加模型 · ${draft.provider}`
-                : draft.previousModelId
-                  ? "编辑模型"
-                  : "添加供应商 / 模型"}
-            </h3>
-            {addModelsMode ? null : (
-              <>
-                <Input
-                  label="供应商 ID"
-                  hint="用于标识供应商，建议小写英文，如 openai、ollama。"
-                  required
-                  value={draft.provider}
-                  onChange={(provider) => setDraft((d) => ({ ...d, provider }))}
-                  placeholder="openai / anthropic / ollama / my-gateway"
-                />
-                <Select
-                  label="API 类型"
-                  hint="Chat Completions（/chat/completions）、Responses（/responses）或 Anthropic Messages。部分新模型 / 网关只支持 Responses。"
-                  value={draft.api}
-                  options={[
-                    { value: "openai-completions", label: "openai-completions（Chat Completions）" },
-                    { value: "openai-responses", label: "openai-responses（Responses）" },
-                    { value: "anthropic-messages", label: "anthropic-messages" },
-                  ]}
-                  onChange={(api) => setDraft((d) => ({ ...d, api: api as ApiKind }))}
-                />
+        <div className="prov-main">
+          {selected ? (
+            <>
+              <header className="prov-head">
+                <div className="prov-head-title">
+                  {nameEditing && !selected.builtin ? (
+                    <input
+                      className="prov-name-input"
+                      value={form.name}
+                      autoFocus
+                      onChange={(e) => setForm((d) => ({ ...d, name: e.target.value }))}
+                      onBlur={() => {
+                        setNameEditing(false);
+                        if (form.name.trim() && form.name.trim() !== selected.custom?.provider) {
+                          void saveProviderMeta();
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setNameEditing(false);
+                      }}
+                    />
+                  ) : (
+                    <h2>{selected.builtin?.name ?? selected.custom?.provider ?? selected.id}</h2>
+                  )}
+                  {!selected.builtin ? (
+                    <button type="button" className="prov-icon-btn" title="重命名" onClick={() => setNameEditing(true)}>
+                      <Pencil size={14} />
+                    </button>
+                  ) : null}
+                  {selected.configured ? (
+                    <span className="prov-pill is-on">已启用</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="prov-pill is-action"
+                      disabled={busy}
+                      onClick={() => {
+                        if (selected.builtin) {
+                          setBuiltinKeyDialog(selected.builtin);
+                          setKeyDraft(form.apiKey);
+                        } else openCreate({ provider: selected.id });
+                      }}
+                    >
+                      启用
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="prov-pill"
+                    disabled={busy || !selected.configured}
+                    onClick={() => {
+                      if (selected.custom) void removeProvider(selected.custom.provider);
+                    }}
+                  >
+                    禁用
+                  </button>
+                </div>
+                {selected.custom ? (
+                  <button
+                    type="button"
+                    className="prov-icon-btn is-danger"
+                    title="删除供应商"
+                    disabled={busy}
+                    onClick={() => void removeProvider(selected.custom!.provider)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                ) : null}
+              </header>
+
+              {selected.builtin?.description ? (
+                <p className="prov-desc">
+                  {selected.builtin.description}
+                  {selected.builtin.docsUrl ? (
+                    <>
+                      {" "}
+                      <a className="prov-docs" href={selected.builtin.docsUrl} target="_blank" rel="noreferrer">
+                        文档
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              ) : selected.builtin?.docsUrl ? (
+                <a className="prov-docs" href={selected.builtin.docsUrl} target="_blank" rel="noreferrer">文档</a>
+              ) : null}
+
+              <div className="prov-fields">
                 <Input
                   label="Base URL"
-                  hint="接口根地址，例如 https://api.openai.com/v1。"
-                  required
-                  value={draft.baseUrl}
-                  onChange={(baseUrl) => setDraft((d) => ({ ...d, baseUrl }))}
+                  value={form.baseUrl}
                   placeholder="https://api.openai.com/v1"
+                  disabled={busy || (!selected.configured && !selected.local)}
+                  onChange={(baseUrl) => setForm((d) => ({ ...d, baseUrl }))}
+                  onBlur={() => {
+                    if (selected.configured && form.baseUrl !== (selected.custom?.baseUrl ?? "")) void saveProviderMeta();
+                  }}
                 />
-                <Input
-                  label="网络代理"
-                  hint="仅该供应商生效。支持 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，也可只填 host:port。留空则直连。"
-                  value={draft.proxy}
-                  onChange={(proxy) => setDraft((d) => ({ ...d, proxy }))}
-                  placeholder="http://127.0.0.1:7890"
+                <Select
+                  label="API 格式"
+                  value={form.api}
+                  options={API_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                  disabled={busy || !selected.configured}
+                  onChange={(api) => {
+                    const next = { ...form, api: api as ApiKind };
+                    setForm(next);
+                    if (selected.configured) void saveProviderMeta(next);
+                  }}
                 />
-              </>
-            )}
-            {addModelsMode ? (
-              <Textarea
-                label="模型 ID"
-                hint="每行一个，也可用逗号分隔。可先点「从接口拉取」。"
-                required
-                rows={8}
-                value={draft.modelIdsText}
-                onChange={(modelIdsText) => setDraft((d) => ({ ...d, modelIdsText }))}
-                placeholder={"gpt-4.1\ngpt-4o-mini"}
-              />
-            ) : (
-              <>
-                <Input
-                  label="模型 ID"
-                  hint="请求时发送的 model 字段。"
-                  required
-                  value={draft.modelId}
-                  onChange={(modelId) => setDraft((d) => ({ ...d, modelId }))}
-                  placeholder="gpt-4.1"
-                />
-                <Input
-                  label="显示名称"
-                  hint="仅用于界面展示，可留空。"
-                  value={draft.modelName}
-                  onChange={(modelName) => setDraft((d) => ({ ...d, modelName }))}
-                  placeholder="可选"
-                />
-              </>
-            )}
-            {addModelsMode ? null : (
-              <Input
-                label="API 密钥"
-                hint="保存在本地 models.json。留空则不改动已有密钥。"
-                type="password"
-                value={draft.apiKey}
-                onChange={(apiKey) => setDraft((d) => ({ ...d, apiKey }))}
-                placeholder={draft.previousModelId ? "留空则保留原密钥" : "可选，稍后也可单独设置"}
-              />
-            )}
+                <Field label="API Key" hint="仅保存在本地 models.json。已保存的密钥不会回显。">
+                  <div className="prov-secret">
+                    <input
+                      className="ui-input"
+                      type={showKey ? "text" : "password"}
+                      value={form.apiKey}
+                      disabled={busy}
+                      placeholder={selected.hasKey ? "••••••••••••" : "sk-…"}
+                      onChange={(e) => setForm((d) => ({ ...d, apiKey: e.target.value }))}
+                      onBlur={() => void saveApiKeyInline()}
+                    />
+                    <button type="button" className="prov-secret-toggle" title={showKey ? "隐藏" : "显示"} onClick={() => setShowKey((v) => !v)}>
+                      {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {selected.hasKey && selected.custom ? (
+                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => void clearKey(selected.custom!.provider)}>
+                      清除密钥
+                    </Button>
+                  ) : null}
+                </Field>
+                {selected.configured || selected.local ? (
+                  <Input
+                    label="网络代理"
+                    hint="仅该供应商生效。支持 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。"
+                    value={form.proxy}
+                    placeholder="http://127.0.0.1:7890"
+                    disabled={busy || !selected.configured}
+                    onChange={(proxy) => setForm((d) => ({ ...d, proxy }))}
+                    onBlur={() => {
+                      if (selected.configured && form.proxy !== (selected.custom?.proxy ?? "")) void saveProviderMeta();
+                    }}
+                  />
+                ) : null}
+              </div>
+
+              <div className="prov-models-head">
+                <h3>模型列表</h3>
+                <div className="prov-models-actions">
+                  {selected.builtin?.refreshable ? (
+                    <Button variant="ghost" size="sm" disabled={refreshBusy === selected.id || busy} onClick={() => void refreshModels(selected.builtin!)}>
+                      {refreshBusy === selected.id ? "刷新中…" : "刷新模型"}
+                    </Button>
+                  ) : null}
+                  {selected.custom ? (
+                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => void fetchModelsForProvider(selected.custom!)}>
+                      <CloudDownload size={14} /> 从接口拉取
+                    </Button>
+                  ) : null}
+                  {selected.custom ? (
+                    <Button variant="ghost" size="sm" disabled={busy || probeBusy === selected.custom.provider} onClick={() => void probe({
+                      provider: selected.custom!.provider,
+                      baseUrl: selected.custom!.baseUrl,
+                      api: selected.custom!.api,
+                      proxy: selected.custom!.proxy,
+                    })}>
+                      {probeBusy === selected.custom.provider ? "测试中…" : "测试连接"}
+                    </Button>
+                  ) : selected.builtin ? (
+                    <Button variant="ghost" size="sm" disabled={probeBusy === selected.id} onClick={() => void probe({ provider: selected.id })}>
+                      {probeBusy === selected.id ? "测试中…" : "测试连接"}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="prov-model-list">
+                {models.length ? models.map((model) => {
+                  const active = props.activeProvider === selected.id && props.activeModel === model.id;
+                  const ctx = formatContextWindow(model.contextWindow);
+                  return (
+                    <div key={model.id} className={`prov-model-card${active ? " is-active" : ""}`}>
+                      <div className="prov-model-copy">
+                        <span className="prov-model-name">{model.name || model.id}</span>
+                        {ctx ? <span className="prov-model-badge">{ctx}</span> : null}
+                        {active ? <span className="auth-badge ok">当前</span> : null}
+                      </div>
+                      <div className="prov-model-ops">
+                        <button type="button" className="prov-icon-btn" title={active ? "当前模型" : "使用该模型"} disabled={busy || active} onClick={() => void useModel(selected.id, model.id)}>
+                          <Plug size={14} />
+                        </button>
+                        {selected.custom ? (
+                          <>
+                            <button type="button" className="prov-icon-btn" title="编辑" disabled={busy} onClick={() => openEdit(selected.custom!, model.id)}>
+                              <Pencil size={14} />
+                            </button>
+                            <button type="button" className="prov-icon-btn is-danger" title="删除" disabled={busy} onClick={() => void removeModel(selected.custom!.provider, model.id)}>
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <p className="hint">暂无模型。可手动添加，或从接口拉取。</p>
+                )}
+                {selected.custom ? (
+                  <button type="button" className="prov-add-model" disabled={busy} onClick={() => openAddModels(selected.custom!)}>
+                    <Plus size={15} /> 添加模型
+                  </button>
+                ) : selected.builtin?.local ? (
+                  <button type="button" className="prov-add-model" disabled={busy} onClick={() => openCreate({
+                    provider: selected.id,
+                    baseUrl: selected.builtin?.baseUrl ?? "",
+                    api: coerceApiKind(selected.builtin?.api),
+                  })}>
+                    <Plus size={15} /> 配置
+                  </button>
+                ) : null}
+              </div>
+              {config?.path ? <p className="hint prov-path">{config.path}</p> : null}
+            </>
+          ) : (
+            <div className="prov-empty">
+              <h2>选择一个供应商</h2>
+              <p>从左侧列表选择，或添加自定义兼容端点。</p>
+              <Button onClick={() => openCreate()}><Plus size={14} /> 添加供应商</Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {providerDialogOpen ? (
+        <div className="modal" data-aluka-drag="no-drag">
+          <form className="modal-card" onSubmit={(e) => void saveProvider(e)}>
+            <h3>添加供应商</h3>
+            <Input
+              label="供应商 ID"
+              hint="用于标识供应商，建议小写英文，如 openai、ollama。"
+              required
+              value={draft.provider}
+              onChange={(provider) => setDraft((d) => ({ ...d, provider }))}
+              placeholder="openai / anthropic / ollama / my-gateway"
+            />
+            <Select
+              label="API 类型"
+              hint="Chat Completions（/chat/completions）、Responses（/responses）或 Anthropic Messages。部分新模型 / 网关只支持 Responses。"
+              value={draft.api}
+              options={[
+                { value: "openai-completions", label: "openai-completions（Chat Completions）" },
+                { value: "openai-responses", label: "openai-responses（Responses）" },
+                { value: "anthropic-messages", label: "anthropic-messages" },
+              ]}
+              onChange={(api) => setDraft((d) => ({ ...d, api: api as ApiKind }))}
+            />
+            <Input
+              label="Base URL"
+              hint="接口根地址，例如 https://api.openai.com/v1。"
+              required
+              value={draft.baseUrl}
+              onChange={(baseUrl) => setDraft((d) => ({ ...d, baseUrl }))}
+              placeholder="https://api.openai.com/v1"
+            />
+            <Input
+              label="网络代理"
+              hint="仅该供应商生效。支持 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080，也可只填 host:port。留空则直连。"
+              value={draft.proxy}
+              onChange={(proxy) => setDraft((d) => ({ ...d, proxy }))}
+              placeholder="http://127.0.0.1:7890"
+            />
+            <Input
+              label="初始模型 ID"
+              hint="创建供应商时至少需要一个模型，之后可单独添加或编辑。"
+              required
+              value={draft.modelId}
+              onChange={(modelId) => setDraft((d) => ({ ...d, modelId }))}
+              placeholder="gpt-4.1"
+            />
+            <Input
+              label="API 密钥"
+              hint="保存在本地 models.json。留空则稍后在详情页设置。"
+              type="password"
+              value={draft.apiKey}
+              onChange={(apiKey) => setDraft((d) => ({ ...d, apiKey }))}
+              placeholder="可选，稍后也可单独设置"
+            />
             <div className="modal-actions">
               <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
                 <CloudDownload size={14} /> 从接口拉取
               </Button>
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => {
-                  setDialogOpen(false);
-                  setAddModelsMode(false);
-                }}
-              >
+              <Button variant="secondary" disabled={busy} onClick={closeProviderDialog}>
+                取消
+              </Button>
+              <Button type="submit" disabled={busy}>保存</Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {modelDialog ? (
+        <div className="modal" data-aluka-drag="no-drag">
+          <form className="modal-card" onSubmit={(e) => void saveModel(e)}>
+            <h3>
+              {modelDialog === "edit"
+                ? `编辑模型 · ${draft.provider}`
+                : `添加模型 · ${draft.provider}`}
+            </h3>
+            <Input
+              label="模型 ID"
+              hint="请求时发送的 model 字段。"
+              required
+              autoFocus
+              value={draft.modelId}
+              onChange={(modelId) => setDraft((d) => ({ ...d, modelId }))}
+              placeholder="gpt-4.1"
+            />
+            <Input
+              label="模型别名"
+              hint="仅用于界面展示，可留空，默认使用模型 ID。"
+              value={draft.modelName}
+              onChange={(modelName) => setDraft((d) => ({ ...d, modelName }))}
+              placeholder="可选"
+            />
+            <Input
+              label="上下文长度"
+              hint="支持 128000、128K、1M。留空则默认 128K。"
+              value={draft.contextWindow}
+              onChange={(contextWindow) => setDraft((d) => ({ ...d, contextWindow }))}
+              placeholder="128K"
+            />
+            <div className="modal-actions">
+              {modelDialog === "add" ? (
+                <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
+                  <CloudDownload size={14} /> 从接口拉取
+                </Button>
+              ) : null}
+              <Button variant="secondary" disabled={busy} onClick={closeModelDialog}>
                 取消
               </Button>
               <Button type="submit" disabled={busy}>保存</Button>
@@ -944,28 +1238,6 @@ export function ProvidersPanel(props: {
             <div className="modal-actions">
               <Button variant="secondary" disabled={busy} onClick={() => setBuiltinKeyDialog(undefined)}>取消</Button>
               <Button type="submit" disabled={busy}>保存</Button>
-            </div>
-          </form>
-        </div>
-      ) : null}
-
-      {keyDialog ? (
-        <div className="modal" data-aluka-drag="no-drag">
-          <form className="modal-card" onSubmit={(e) => void saveKey(e)}>
-            <h3>API 密钥 · {keyDialog}</h3>
-            <Input
-              label="API 密钥"
-              hint="仅保存在本地 models.json，不会上传。"
-              type="password"
-              required
-              autoFocus
-              value={keyDraft}
-              onChange={setKeyDraft}
-              placeholder="sk-…"
-            />
-            <div className="modal-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => setKeyDialog(undefined)}>取消</Button>
-              <Button type="submit" disabled={busy}>保存密钥</Button>
             </div>
           </form>
         </div>

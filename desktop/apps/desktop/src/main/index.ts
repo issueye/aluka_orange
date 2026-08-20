@@ -60,7 +60,7 @@ const tray = createTray(trayOpts);
 tray.on("click", () => win.show());
 
 try {
-  globalShortcut.register("Ctrl+Alt+A", () => win.show());
+  // globalShortcut.register("Ctrl+Alt+A", () => win.show());
 } catch (err) {
   console.warn("[aluka-desktop] globalShortcut register failed", err);
 }
@@ -127,11 +127,23 @@ app.registerRPC("removeWorkspace", (params: { path?: string }) => {
   return requireHost().removeWorkspace(params.path.trim());
 });
 app.registerRPC("chooseWorkspace", (params?: { mode?: "latest" | "new" }) => {
-  const selected = pickFolder();
-  if (!selected) return { cancelled: true as const };
   const mode = params?.mode === "new" ? "new" : "latest";
-  const opened = requireHost().addWorkspace(selected, mode);
-  return { cancelled: false as const, ...opened };
+  void pickFolder()
+    .then((selected) => {
+      if (!selected) {
+        win.emit("workspace.choose", { cancelled: true as const });
+        return;
+      }
+      const opened = requireHost().addWorkspace(selected, mode);
+      win.emit("workspace.choose", { cancelled: false as const, ...opened });
+    })
+    .catch((err) => {
+      win.emit("workspace.choose", {
+        cancelled: true as const,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  return { pending: true as const };
 });
 app.registerRPC("createSession", (params?: { cwd?: string }) => requireHost().createSession(params?.cwd));
 app.registerRPC("openSession", (params: { id?: string; cwd?: string }) => {
@@ -341,10 +353,19 @@ app.registerRPC("removeCustomProvider", (params: { provider?: string }) => {
   if (!params?.provider?.trim()) throw new Error("removeCustomProvider requires provider");
   return requireHost().removeCustomProvider(params.provider.trim());
 });
-app.registerRPC("addProviderModels", (params: { provider?: string; models?: Array<{ id?: string; name?: string }> }) => {
+app.registerRPC("addProviderModels", (params: {
+  provider?: string;
+  models?: Array<{ id?: string; name?: string; reasoning?: boolean; contextWindow?: number; maxTokens?: number }>;
+}) => {
   if (!params?.provider?.trim()) throw new Error("addProviderModels requires provider");
   const models = (params.models ?? [])
-    .map((item) => ({ id: String(item?.id ?? "").trim(), name: item?.name }))
+    .map((item) => ({
+      id: String(item?.id ?? "").trim(),
+      name: item?.name,
+      reasoning: item?.reasoning,
+      contextWindow: typeof item?.contextWindow === "number" ? item.contextWindow : undefined,
+      maxTokens: typeof item?.maxTokens === "number" ? item.maxTokens : undefined,
+    }))
     .filter((item) => item.id);
   return requireHost().addProviderModels({ provider: params.provider.trim(), models });
 });

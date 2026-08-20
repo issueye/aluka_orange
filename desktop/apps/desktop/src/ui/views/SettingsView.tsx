@@ -83,7 +83,7 @@ export function SettingsView(props: {
   refreshUsage: (id?: string) => Promise<void>;
   activeId: string | undefined;
   /** 选择工作区（原生文件夹选择，失败时由 App 打开路径弹窗） */
-  chooseWorkspace: (mode: "latest" | "new") => Promise<void>;
+  chooseWorkspace: (mode: "latest" | "new") => void;
   /** 使用临时工作区 */
   createTempWorkspace: () => Promise<void>;
   /** 切换工作区 */
@@ -107,7 +107,6 @@ export function SettingsView(props: {
   const [npmSpec, setNpmSpec] = useState("");               // npm 包规格输入
   const [npmHint, setNpmHint] = useState("");               // npm 安装结果提示
   const [packages, setPackages] = useState<string[]>([]);   // 已注册的本地扩展包
-  const [modelsPreviewHtml, setModelsPreview] = useState<string>(""); // models.json 预览
 
   /** 挂载即加载本地扩展包清单与 models.json 预览 */
   useEffect(() => {
@@ -141,7 +140,6 @@ export function SettingsView(props: {
           );
         }
       }
-      setModelsPreview(blocks.join("\n") || "未找到 models.json");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -327,26 +325,15 @@ export function SettingsView(props: {
         )}
 
         {section === "providers" && (
-          <div className="settings-page-shell">
-            <div className="settings-page-title-row">
-              <h1 className="settings-page-title">供应商</h1>
-            </div>
-            <div className="settings-page-sections">
-              <section className="settings-section-block">
-                <ProvidersPanel
-                  activeProvider={settings.provider}
-                  activeModel={settings.model}
-                  onToast={toast}
-                  onActiveChanged={() => {
-                    void props.loadSettings();
-                  }}
-                />
-              </section>
-              <details className="settings-details">
-                <summary>models.json 只读预览（含 ~/.pi）</summary>
-                <pre className="hint models-preview">{modelsPreviewHtml}</pre>
-              </details>
-            </div>
+          <div className="settings-page-shell settings-page-shell--providers">
+            <ProvidersPanel
+              activeProvider={settings.provider}
+              activeModel={settings.model}
+              onToast={toast}
+              onActiveChanged={() => {
+                void props.loadSettings();
+              }}
+            />
           </div>
         )}
 
