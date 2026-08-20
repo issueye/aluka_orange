@@ -263,7 +263,6 @@ select {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 
 .ws-group {
@@ -602,6 +601,7 @@ select {
 
 .ws-settings-list li button:hover {
   background: var(--hover-fill);
+  border-radius: var(--radius-sm);
 }
 
 .ws-settings-list li.active button strong {
