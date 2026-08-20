@@ -3,22 +3,24 @@
  *
  * 左侧分组导航 rail（搜索过滤 + 图标项），右侧 zeno 式内容列
  * （大标题行 + 分区标签 + 分组卡片 + 行式设置项）。
- * 表单草稿（API Key / 包路径 / npm 规格）与设置分区状态均为本视图局部状态。
+ * 表单草稿（API Key）与设置分区状态均为本视图局部状态；
+ * 插件安装/管理在「扩展」页（ExtensionsView）。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
-  Boxes,
   Folder,
   Info,
   Palette,
   Search,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { rpc, bridge } from "../bridge.ts";
+import { rpc } from "../bridge.ts";
 import { ProvidersPanel } from "../ProvidersPanel.tsx";
+import { UsagePanel } from "../UsagePanel.tsx";
 import { Button, Input, Switch } from "../components/index.ts";
 import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
 import type {
@@ -29,7 +31,7 @@ import type {
 import { pathsEqual, formatUsage } from "../lib/utils.ts";
 
 /** 设置页内的子分区 */
-type SettingsSection = "workspace" | "providers" | "appearance" | "packages" | "usage" | "about";
+type SettingsSection = "workspace" | "providers" | "appearance" | "usage" | "about";
 
 /** 设置页左侧导航：分组 + 图标（参考 zeno settings rail 的信息架构） */
 const SETTINGS_NAV_GROUPS: Array<{
@@ -52,11 +54,6 @@ const SETTINGS_NAV_GROUPS: Array<{
       { id: "providers", label: "供应商", icon: Sparkles },
       { id: "usage", label: "用量", icon: BarChart3 },
     ],
-  },
-  {
-    id: "extensions",
-    label: "扩展",
-    items: [{ id: "packages", label: "扩展包", icon: Boxes }],
   },
   {
     id: "other",
@@ -88,6 +85,8 @@ export function SettingsView(props: {
   createTempWorkspace: () => Promise<void>;
   /** 切换工作区 */
   selectWorkspace: (cwd: string, mode?: "latest" | "new") => Promise<void>;
+  /** 从列表移除工作区（不删除磁盘文件） */
+  removeWorkspace: (cwd: string) => Promise<void>;
   /** 返回对话视图 */
   onBack: () => void;
   /** 重载全局设置（保存 / 安装后由 App 壳刷新 settings 与模型选项） */
@@ -103,63 +102,7 @@ export function SettingsView(props: {
   const [section, setSection] = useState<SettingsSection>("workspace"); // 当前子分区
   const [navQuery, setNavQuery] = useState("");             // 设置导航过滤词
   const [apiKeyDraft, setApiKeyDraft] = useState("");       // API Key 输入草稿
-  const [pkgPath, setPkgPath] = useState("");               // 本地扩展包路径输入
-  const [npmSpec, setNpmSpec] = useState("");               // npm 包规格输入
-  const [npmHint, setNpmHint] = useState("");               // npm 安装结果提示
-  const [packages, setPackages] = useState<string[]>([]);   // 已注册的本地扩展包
-
-  /** 挂载即加载本地扩展包清单与 models.json 预览 */
-  useEffect(() => {
-    void (async () => {
-      try {
-        const pkgs = (await rpc<string[]>("listLocalPackages")) ?? settings.extraExtensions ?? [];
-        setPackages(pkgs);
-      } catch {
-        setPackages(settings.extraExtensions ?? []);
-      }
-      const preview = await rpc<{
-        sources: Array<{
-          path: string;
-          exists: boolean;
-          error?: string;
-          providers: Array<{
-            provider: string;
-            baseUrl?: string;
-            api?: string;
-            hasApiKeyField: boolean;
-            models: Array<{ id: string; name?: string }>;
-          }>;
-        }>;
-      }>("getModelsJsonPreview");
-      const blocks: string[] = [];
-      for (const source of preview?.sources ?? []) {
-        blocks.push(`${source.path} — ${source.exists ? (source.error ?? "ok") : "missing"}`);
-        for (const p of source.providers ?? []) {
-          blocks.push(
-            `  ${p.provider}: ${p.api || "?"} · ${p.baseUrl || "default"} · models ${p.models.map((m) => m.id).join(", ") || "—"} · key:${p.hasApiKeyField ? "yes" : "no"}`,
-          );
-        }
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 手动安装（settings 页 npm 表单）结果回传：更新提示与清单 */
-  useEffect(() => {
-    const onPackageInstall = (raw: unknown) => {
-      const result = raw as { ok?: boolean; error?: string; packageName?: string; entryPath?: string; runner?: string };
-      if (result?.ok) {
-        setNpmHint(`已通过 ${result.runner} 安装 ${result.packageName} → ${result.entryPath}`);
-        setNpmSpec("");
-        void rpc<string[]>("listLocalPackages").then((pkgs) => setPackages(pkgs ?? [])).catch(() => {});
-      } else {
-        setNpmHint(result?.error ?? "安装失败");
-      }
-    };
-    const bus = bridge().events;
-    bus.on("package.install", onPackageInstall);
-    return () => bus.off("package.install", onPackageInstall);
-  }, []);
+  const [usageReloadKey, setUsageReloadKey] = useState(0);  // 用量面板手动刷新信号
 
   /** 设置导航分组过滤（按分组名 / 项目名，大小写不敏感） */
   const navGroups = useMemo(() => {
@@ -278,13 +221,25 @@ export function SettingsView(props: {
                     <div className="settings-row settings-row-col settings-row-last">
                       <div className="settings-row-copy">
                         <div className="settings-row-title">快速切换</div>
-                        <div className="settings-row-desc">点击切换到已添加的工作区并恢复最近会话。</div>
+                        <div className="settings-row-desc">点击切换到已添加的工作区并恢复最近会话；悬停行可移除（不删除磁盘文件）。</div>
                         <ul className="ws-settings-list">
                           {props.workspaces.map((ws) => (
                             <li key={ws.path} className={pathsEqual(ws.path, settings.cwd) ? "active" : ""}>
-                              <button type="button" onClick={() => void props.selectWorkspace(ws.path, "latest")}>
+                              <button
+                                type="button"
+                                className="ws-settings-pick"
+                                onClick={() => void props.selectWorkspace(ws.path, "latest")}
+                              >
                                 <strong>{ws.name}</strong>
                                 <span>{ws.path}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="ws-settings-remove"
+                                title={`移除工作区（不删除文件）：${ws.path}`}
+                                onClick={() => void props.removeWorkspace(ws.path)}
+                              >
+                                <Trash2 size={13} strokeWidth={1.75} />
                               </button>
                             </li>
                           ))}
@@ -371,106 +326,24 @@ export function SettingsView(props: {
           </div>
         )}
 
-        {section === "packages" && (
-          <div className="settings-page-shell">
-            <div className="settings-page-title-row">
-              <h1 className="settings-page-title">扩展包</h1>
-            </div>
-            <div className="settings-page-sections">
-              <section className="settings-section-block">
-                <h2 className="settings-section-label">已注册本地扩展</h2>
-                <div className="settings-card">
-                  {packages.length ? (
-                    packages.map((pkg, index) => (
-                      <div
-                        key={pkg}
-                        className={`settings-row settings-row-compact${index === packages.length - 1 ? " settings-row-last" : ""}`}
-                      >
-                        <div className="settings-row-copy">
-                          <div className="settings-row-title settings-row-title-mono">{pkg}</div>
-                        </div>
-                        <div className="settings-row-control">
-                          <Button variant="ghost" size="sm" onClick={() => void (async () => {
-                            await rpc("removeLocalPackage", { path: pkg });
-                            const pkgs = (await rpc<string[]>("listLocalPackages")) ?? [];
-                            setPackages(pkgs);
-                          })()}>移除</Button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="settings-row settings-row-last">
-                      <div className="settings-row-desc">
-                        尚未注册本地扩展包。插件市场的搜索 / 安装 / 移除请使用侧栏「扩展」界面。
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </section>
-              <section className="settings-section-block">
-                <h2 className="settings-section-label">手动添加</h2>
-                <div className="settings-card">
-                  <div className="settings-row settings-row-col">
-                    <div className="settings-row-copy">
-                      <div className="settings-row-title">本地路径</div>
-                      <div className="settings-row-desc">扩展入口文件或目录的绝对路径。</div>
-                    </div>
-                    <div className="settings-row-stack">
-                      <Input
-                        value={pkgPath}
-                        placeholder="E:\path\to\extension.ts"
-                        onChange={setPkgPath}
-                      />
-                      <div className="settings-inline-actions">
-                        <Button variant="secondary" size="sm" onClick={() => void (async () => {
-                          if (!pkgPath.trim()) return;
-                          await rpc("addLocalPackage", { path: pkgPath.trim() });
-                          setPkgPath("");
-                          const pkgs = (await rpc<string[]>("listLocalPackages")) ?? [];
-                          setPackages(pkgs);
-                        })()}>添加路径</Button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="settings-row settings-row-col settings-row-last">
-                    <div className="settings-row-copy">
-                      <div className="settings-row-title">npm 包</div>
-                      <div className="settings-row-desc">
-                        npm 包名，或 file:./my-ext 本地包。安装到 ~/.aluka/agent/npm-packages；
-                        同时会自动加载 ~/.pi/agent/settings.json 里 packages（npm: / git:）已安装的插件。
-                      </div>
-                    </div>
-                    <div className="settings-row-stack">
-                      <Input
-                        value={npmSpec}
-                        placeholder="npm 包名或 file:./my-ext"
-                        onChange={setNpmSpec}
-                      />
-                      <div className="settings-inline-actions">
-                        <Button variant="secondary" size="sm" onClick={() => {
-                          if (!npmSpec.trim()) return;
-                          setNpmHint(`正在安装 ${npmSpec}…`);
-                          void rpc("installNpmPackage", { spec: npmSpec.trim() });
-                        }}>安装</Button>
-                      </div>
-                      {npmHint ? <p className="settings-meta">{npmHint}</p> : null}
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
-        )}
-
         {section === "usage" && (
           <div className="settings-page-shell">
             <div className="settings-page-title-row">
               <h1 className="settings-page-title">用量</h1>
               <div className="settings-page-title-action">
-                <Button variant="secondary" onClick={() => void props.refreshUsage(props.activeId)}>刷新用量</Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    void props.refreshUsage(props.activeId);
+                    setUsageReloadKey((key) => key + 1);
+                  }}
+                >
+                  刷新用量
+                </Button>
               </div>
             </div>
-            <div className="settings-page-sections">
+            <UsagePanel reloadKey={usageReloadKey} />
+            <div className="settings-page-sections usage-session-section">
               <section className="settings-section-block">
                 <h2 className="settings-section-label">当前会话</h2>
                 <div className="settings-card">

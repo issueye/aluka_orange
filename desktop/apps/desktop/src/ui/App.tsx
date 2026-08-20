@@ -9,6 +9,7 @@ import {
   Download,
   PanelLeft,
   SquarePen,
+  RefreshCw,
 } from "lucide-react";
 import { bridge, rpc } from "./bridge.ts";
 import { WorkspaceSidebar, type WorkspaceItem } from "./WorkspaceSidebar.tsx";
@@ -76,6 +77,7 @@ export function App() {
   const [modal, setModal] = useState<ExtensionUiRequest | undefined>(); // 扩展 UI 弹窗请求
   const [selectChoice, setSelectChoice] = useState<string | undefined>(); // 弹窗选择结果
   const [modalInput, setModalInput] = useState(""); // 弹窗输入内容
+  const [extReloading, setExtReloading] = useState(false); // 扩展热重载进行中（header 按钮）
   const toastSeq = useRef(0); // Toast 序列号
   const timelineCache = useRef<Record<string, TimelineItem[]>>({});
   const sessionRef = useRef<{ cwd?: string; id?: string }>({});
@@ -269,6 +271,54 @@ export function App() {
       }
     },
     [activeId, applyOpened, refreshSessions, settings.cwd, toast],
+  );
+
+  /** 手动热重载扩展（全局 header 按钮）：重扫扩展目录 + 重建工具，并刷新相关状态 */
+  const reloadExtensions = useCallback(async () => {
+    setExtReloading(true);
+    try {
+      const inv = await rpc<{ extensions?: unknown[]; errors?: unknown[] }>("reloadExtensions");
+      const extCount = inv?.extensions?.length ?? 0;
+      const errCount = inv?.errors?.length ?? 0;
+      await loadSettings();
+      // 通知已挂载的扩展 / 技能页面刷新列表
+      window.dispatchEvent(new CustomEvent("aluka:extensions-reloaded"));
+      setStatus(`已重载扩展：${extCount} 个生效${errCount ? `，${errCount} 个错误` : ""}`);
+      setTimeout(() => setStatus(idleStatus), 2500);
+      toast(
+        errCount
+          ? `扩展已重载：${extCount} 个生效，${errCount} 个加载错误`
+          : `已重载扩展（${extCount} 个生效）`,
+        errCount ? "warning" : "info",
+      );
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setExtReloading(false);
+    }
+  }, [idleStatus, loadSettings, toast]);
+
+  /** 从工作区列表移除目录（不删除磁盘文件）；移除当前工作区时切到回退工作区 */
+  const removeWorkspace = useCallback(
+    async (dir: string) => {
+      try {
+        const removingActive = pathsEqual(dir, settings.cwd ?? "");
+        const result = await rpc<{ cwd: string; workspaces: WorkspaceItem[] }>("removeWorkspace", {
+          path: dir,
+        });
+        if (removingActive && result?.cwd) {
+          // runtime 已切到回退工作区；重新 selectWorkspace 取回 OpenedSession 同步界面
+          await selectWorkspace(result.cwd, "latest");
+        } else {
+          await refreshSessions();
+          await loadSettings();
+        }
+        toast("已从列表移除工作区（未删除磁盘文件）", "info");
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    },
+    [loadSettings, refreshSessions, selectWorkspace, settings.cwd, toast],
   );
 
   const toggleSidebar = useCallback((next?: boolean) => {
@@ -708,6 +758,20 @@ export function App() {
     };
   }, [idleStatus, rememberTimeline, refreshSessions, toast]);
 
+  /** 扩展页「提示词 → 插入输入框」：把提示词正文追加到对话输入框并切回对话视图 */
+  useEffect(() => {
+    const onPromptInsert = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      const text = detail?.text?.trim();
+      if (!text) return;
+      setPrompt((prev) => (prev.trim() ? `${prev.trim()}\n\n${text}` : text));
+      setView("chat");
+      toast("已插入提示词到输入框", "info");
+    };
+    window.addEventListener("aluka:prompt-insert", onPromptInsert);
+    return () => window.removeEventListener("aluka:prompt-insert", onPromptInsert);
+  }, [toast]);
+
   const activeTitle = useMemo(() => {
     for (const ws of workspaces) {
       if (settings.cwd && !pathsEqual(ws.path, settings.cwd)) continue;
@@ -747,25 +811,16 @@ export function App() {
 
   return (
     <div
-      className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${view === "settings" ? "settings-mode" : ""} ${sidebarCollapsed && view !== "settings" ? "sidebar-collapsed" : ""}`}
+      className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${view !== "chat" ? "settings-mode" : ""} ${sidebarCollapsed && view === "chat" ? "sidebar-collapsed" : ""}`}
       data-theme={theme}
     >
       <aside
         className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`}
         data-aluka-drag="no-drag"
+        style={{ width: sidebarCollapsed ? "var(--sidebar-collapsed-width)" : "var(--sidebar-width)" }}
       >
         {sidebarCollapsed ? (
           <div className="sidebar-rail" data-aluka-drag>
-            <button
-              type="button"
-              className="icon-btn"
-              data-aluka-drag="no-drag"
-              title="展开侧栏"
-              onClick={() => toggleSidebar(false)}
-            >
-              <PanelLeft size={16} />
-            </button>
-
             <button
               type="button"
               className="icon-btn"
@@ -788,6 +843,7 @@ export function App() {
             onAddWorkspace={() => void chooseWorkspace("latest")}
             onCreateTemp={() => void createTempWorkspace()}
             onDeleteSession={(id, cwd) => void deleteSession(id, cwd)}
+            onRemoveWorkspace={(cwd) => void removeWorkspace(cwd)}
             onCollapseSidebar={() => toggleSidebar(true)}
           />
         )}
@@ -817,7 +873,18 @@ export function App() {
         </div>
       </aside>
 
-      <section className="main-col">
+      <section
+        className="main-col"
+        style={{
+          // 设置 / 扩展视图隐藏侧栏，占满整行；对话按侧栏状态扣减
+          width:
+            view !== "chat"
+              ? "100%"
+              : sidebarCollapsed
+                ? "calc(100% - var(--sidebar-collapsed-width))"
+                : "calc(100% - var(--sidebar-width))",
+        }}
+      >
         <header className="thread-header" data-aluka-drag>
           {sidebarCollapsed && view === "chat" ? (
             <button
@@ -838,55 +905,19 @@ export function App() {
               ? activeTitle
               : view === "settings"
                 ? "设置"
-                : "扩展与技能"}
+                : "扩展"}
           </div>
-          {view === "chat" ? (
-            <div className="thread-actions" data-aluka-drag="no-drag">
-              <button
-                type="button"
-                className="header-action"
-                title="导出会话"
-                onClick={() =>
-                  void (async () => {
-                    const result = await rpc<{
-                      ok?: boolean;
-                      error?: string;
-                      path?: string;
-                      format?: string;
-                      bytes?: number;
-                    }>("exportSession", { format: "markdown", id: activeId });
-                    if (result?.ok && result.path) {
-                      toast(
-                        `已导出 ${result.format}（${result.bytes ?? 0} 字节）`,
-                        "info",
-                      );
-                      setStatus(`已导出 → ${result.path}`);
-                      setTimeout(() => setStatus(idleStatus), 2500);
-                    } else toast(result?.error ?? "导出失败", "error");
-                  })()
-                }
-              >
-                <Download size={15} />
-              </button>
-              <button
-                type="button"
-                className="header-action"
-                title="分享会话"
-                onClick={() => {
-                  setStatus("正在通过 gh gist 分享…");
-                  void rpc("shareSession", { id: activeId }).catch((err) => {
-                    toast(
-                      err instanceof Error ? err.message : String(err),
-                      "error",
-                    );
-                    setStatus(idleStatus);
-                  });
-                }}
-              >
-                <Share2 size={15} />
-              </button>
-            </div>
-          ) : null}
+          <div className="thread-actions" data-aluka-drag="no-drag">
+            <button
+              type="button"
+              className="header-action"
+              title="重载扩展（添加插件后手动点击生效）"
+              disabled={extReloading}
+              onClick={() => void reloadExtensions()}
+            >
+              <RefreshCw size={15} className={extReloading ? "is-spinning" : undefined} />
+            </button>
+          </div>
           <div className="window-controls" data-aluka-drag="no-drag">
             <button
               type="button"
@@ -960,6 +991,7 @@ export function App() {
             chooseWorkspace={chooseWorkspace}
             createTempWorkspace={createTempWorkspace}
             selectWorkspace={selectWorkspace}
+            removeWorkspace={removeWorkspace}
             onBack={() => void showChat()}
             loadSettings={loadSettings}
             refreshSessions={refreshSessions}

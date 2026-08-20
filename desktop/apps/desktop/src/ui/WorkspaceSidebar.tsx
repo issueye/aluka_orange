@@ -52,6 +52,8 @@ type WorkspaceSidebarProps = {
   onAddWorkspace: () => void;
   onCreateTemp: () => void;
   onDeleteSession: (id: string, cwd: string) => void;
+  /** 从列表移除工作区（不删除磁盘文件） */
+  onRemoveWorkspace: (cwd: string) => void;
   onCollapseSidebar: () => void;
 };
 
@@ -66,6 +68,7 @@ export function WorkspaceSidebar({
   onAddWorkspace,
   onCreateTemp,
   onDeleteSession,
+  onRemoveWorkspace,
   onCollapseSidebar,
 }: WorkspaceSidebarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
@@ -183,6 +186,17 @@ export function WorkspaceSidebar({
                 >
                   <Folder size={15} />
                   <span className="ws-folder-name">{ws.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="ws-folder-del"
+                  title={`移除工作区（不删除文件）：${ws.path}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveWorkspace(ws.path);
+                  }}
+                >
+                  <Trash2 size={13} />
                 </button>
               </div>
               {folded ? null : ws.sessions.length ? (

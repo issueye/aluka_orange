@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 import * as nodeModule from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createJiti, type TransformOptions, type TransformResult } from "jiti";
-import { getAgentDir, getPiAgentDir } from "../config.ts";
+import { getAgentDir } from "../config.ts";
 import { createSyntheticSourceInfo } from "../source-info.ts";
 import { createEventBus } from "./event-bus.ts";
 import { discoverPackageExtensionPaths } from "./package-paths.ts";
@@ -129,21 +129,19 @@ export function createExtensionRuntime(): ExtensionRuntime {
  * 发现扩展文件路径
  *
  * 按优先级从以下位置搜索扩展：
- * 1. {home}/.pi/agent/extensions/
- * 2. {home}/.aluka/agent/extensions/
- * 3. {cwd}/.pi/extensions/
- * 4. {cwd}/.aluka/extensions/
- * 5. 设置文件中的 extensions / extraExtensions 路径
- * 6. 设置文件中的 packages（npm: / git:，兼容 ~/.pi/agent）
- * 7. 命令行参数指定的额外路径
+ * 1. {home}/.aluka/agent/extensions/
+ * 2. {cwd}/.aluka/extensions/
+ * 3. 设置文件中的 extensions / extraExtensions 路径
+ * 4. 设置文件中的 packages（npm: / git:）
+ * 5. 命令行参数指定的额外路径
+ *
+ * 不再扫描 .pi 目录（~/.pi/agent 与 {cwd}/.pi），保持 Aluka 独立。
  */
 export function discoverExtensionPaths(cwd: string, extra: string[] = []): string[] {
   const fromSettings = readSettingsExtensionPaths(cwd);
   const fromPackages = discoverPackageExtensionPaths({ cwd });
   const dirs = [
-    path.join(getPiAgentDir(), "extensions"),
     path.join(getAgentDir(), "extensions"),
-    path.join(cwd, ".pi", "extensions"),
     path.join(cwd, ".aluka", "extensions"),
     ...fromSettings,
     ...extra,
@@ -169,16 +167,12 @@ export function discoverExtensionPaths(cwd: string, extra: string[] = []): strin
  * 从设置文件中读取扩展路径
  *
  * 检查以下位置的 settings.json 文件：
- * - {home}/.pi/agent/settings.json
  * - {home}/.aluka/agent/settings.json
- * - {cwd}/.pi/settings.json
  * - {cwd}/.aluka/settings.json
  */
 function readSettingsExtensionPaths(cwd: string): string[] {
   const files = [
-    path.join(getPiAgentDir(), "settings.json"),
     path.join(getAgentDir(), "settings.json"),
-    path.join(cwd, ".pi", "settings.json"),
     path.join(cwd, ".aluka", "settings.json"),
   ];
   const extra: string[] = [];

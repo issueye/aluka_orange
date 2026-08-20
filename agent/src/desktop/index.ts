@@ -10,6 +10,7 @@ export {
   type SelectWorkspaceMode,
   type SessionHandle,
   type SkillListItem,
+  type PromptListItem,
   type TimelineItem,
   type WorkspaceSessionView,
   type WorkspaceView,
@@ -81,6 +82,17 @@ export {
   type SessionUsageTotals,
   type SessionUsageView,
 } from "./session-usage.ts";
+export {
+  buildUsageStatsView,
+  loadUsageStore,
+  recordProducedUsage,
+  usageStorePath,
+  type ModelUsageTotals,
+  type UsageModelStat,
+  type UsageProviderStat,
+  type UsageStatsView,
+  type UsageStoreFile,
+} from "./usage-store.ts";
 export {
   TEMP_WORKSPACE_PREFIX,
   createTemporaryWorkspace,

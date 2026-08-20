@@ -27,6 +27,9 @@ import {
   type SessionExportOutcome,
   type SessionShareOutcome,
   type SessionUsageView,
+  type UsageStatsView,
+  type ExtensionInventory,
+  type PromptListItem,
   type OpenedSession,
   type SessionHandle,
   type WorkspaceView,
@@ -90,8 +93,12 @@ export interface DesktopHost {
   dispose(): void;
   /** 列出已加载的扩展及其提供的工具和命令 */
   listExtensions(): ReturnType<DesktopRuntime["listExtensions"]>;
+  /** 手动热重载扩展（重扫目录 + 重建工具）并返回最新清单 */
+  reloadExtensions(): Promise<ExtensionInventory>;
   /** 列出可用技能 */
   listSkills(): ReturnType<DesktopRuntime["listSkills"]>;
+  /** 提示词片段清单（.aluka/prompts 下的 Markdown，供插入输入框） */
+  listPrompts(): PromptListItem[];
   /** 列出已注册的本地扩展包路径 */
   listLocalPackages(): string[];
   /** 添加本地扩展包路径 */
@@ -157,6 +164,8 @@ export interface DesktopHost {
   shareSession(sessionId?: string): Promise<SessionShareOutcome>;
   /** 获取指定会话的 token 用量统计 */
   getSessionUsage(sessionId?: string): SessionUsageView;
+  /** 获取全局（跨会话）用量统计：按供应商/模型聚合输入/输出 token */
+  getUsageStats(): UsageStatsView;
   setSessionName(name: string): { id: string; name?: string };
   forkSession(leafId?: string): OpenedSession;
 }
@@ -239,7 +248,9 @@ export async function createDesktopHost(opts: {
       runtime.dispose();
     },
     listExtensions: () => runtime.listExtensions(),
+    reloadExtensions: () => runtime.reloadExtensions(),
     listSkills: () => runtime.listSkills(),
+    listPrompts: () => runtime.listPrompts(),
     listLocalPackages: () => runtime.listLocalPackages(),
     addLocalPackage: (pkgPath) => withPreset(runtime.addLocalPackage(pkgPath)),
     removeLocalPackage: (pkgPath) => withPreset(runtime.removeLocalPackage(pkgPath)),
@@ -269,6 +280,7 @@ export async function createDesktopHost(opts: {
     exportSession: (format, sessionId) => runtime.exportSession(format, sessionId),
     shareSession: (sessionId) => runtime.shareSession(sessionId),
     getSessionUsage: (sessionId) => runtime.getSessionUsage(sessionId),
+    getUsageStats: () => runtime.getUsageStats(),
     setSessionName: (name) => runtime.setSessionName(name),
     forkSession: (leafId) => runtime.forkSession(leafId),
   };

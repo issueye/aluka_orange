@@ -21,7 +21,7 @@ function tempDir(): string {
 describe("pi-compatible extensions", () => {
   it("loads a default factory, registers a tool and command, and fires session_start", async () => {
     const cwd = tempDir();
-    const extDir = path.join(cwd, ".pi", "extensions");
+    const extDir = path.join(cwd, ".aluka", "extensions");
     fs.mkdirSync(extDir, { recursive: true });
     fs.writeFileSync(
       path.join(extDir, "greet.ts"),
@@ -96,7 +96,7 @@ describe("pi-compatible extensions", () => {
 
   it("resolves type-only imports from @earendil-works/pi-coding-agent via jiti alias", async () => {
     const cwd = tempDir();
-    const extDir = path.join(cwd, ".pi", "extensions");
+    const extDir = path.join(cwd, ".aluka", "extensions");
     fs.mkdirSync(extDir, { recursive: true });
     fs.writeFileSync(
       path.join(extDir, "typed.ts"),

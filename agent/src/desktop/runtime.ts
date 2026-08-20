@@ -17,6 +17,7 @@ import type { ToolDefinition } from "../extensions/types.ts";
 import { resolveRuntimeApiKey, resolveRuntimeModel } from "../models.ts";
 import { SessionManager, type SessionSummary } from "../session/manager.ts";
 import { killTrackedChildren } from "../process-children.ts";
+import { loadPrompts } from "../prompts/index.ts";
 import { loadSkills, type Skill } from "../skills/index.ts";
 import { buildSystemPrompt, toolSnippets } from "../system-prompt.ts";
 import { builtinTools } from "../tools/index.ts";
@@ -88,6 +89,11 @@ import {
   type SessionUsageTotals,
   type SessionUsageView,
 } from "./session-usage.ts";
+import {
+  buildUsageStatsView,
+  recordProducedUsage,
+  type UsageStatsView,
+} from "./usage-store.ts";
 import type { Usage } from "../ai/types.ts";
 import {
   createTemporaryWorkspace,
@@ -155,6 +161,14 @@ export interface SkillListItem {
   path: string;
 }
 
+/** 提示词条目（listPrompts 投影，含正文供插入输入框） */
+export interface PromptListItem {
+  name: string;
+  description: string;
+  path: string;
+  body: string;
+}
+
 export interface WorkspaceSessionView {
   id: string;
   title: string;
@@ -204,11 +218,15 @@ export interface DesktopRuntime {
   dispose(): void;
   listExtensions(): ExtensionInventory;
   listSkills(): SkillListItem[];
+  /** 提示词片段清单（.aluka/prompts 下的 Markdown，供插入输入框） */
+  listPrompts(): PromptListItem[];
   respondExtensionUi(response: ExtensionUiResponse): void;
   /** 已持久化的本地扩展路径（不含启动期 demo opts） */
   listLocalPackages(): string[];
   addLocalPackage(pkgPath: string): ReturnType<typeof settingsView>;
   removeLocalPackage(pkgPath: string): ReturnType<typeof settingsView>;
+  /** 手动热重载扩展（重扫目录 + 重建工具），返回最新清单；装完插件后由 UI 触发 */
+  reloadExtensions(): Promise<ExtensionInventory>;
   /** 只读预览 ~/.aluka|~/.pi/agent/models.json（无密钥） */
   getModelsJsonPreview(): ModelsJsonPreview;
   /** 可编辑的 Aluka agentDir/models.json 配置视图 */
@@ -252,6 +270,8 @@ export interface DesktopRuntime {
   shareSession(sessionId?: string): Promise<SessionShareOutcome>;
   /** 当前会话 token 用量汇总（API key 路径；无 OAuth 配额） */
   getSessionUsage(sessionId?: string): SessionUsageView;
+  /** 全局（跨会话）token 用量统计：按 供应商 → 模型 聚合（agentDir/usage.json） */
+  getUsageStats(): UsageStatsView;
   /** 写入 session_info，侧栏标题优先用这个名字 */
   setSessionName(name: string): { id: string; name?: string };
   /** 把当前（或指定 leaf）分支抽成新会话文件 */
@@ -860,11 +880,23 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     listSkills() {
       return skillItems(loadSkills(cwd));
     },
+    listPrompts() {
+      return loadPrompts(cwd).map((prompt) => ({
+        name: prompt.name,
+        description: prompt.description,
+        path: prompt.path,
+        body: prompt.body,
+      }));
+    },
     respondExtensionUi(response) {
       desktopUi.respond(response);
     },
     listLocalPackages() {
       return [...(settings.extraExtensions ?? [])];
+    },
+    async reloadExtensions() {
+      await reloadExtensionsForCwd(cwd);
+      return api.listExtensions();
     },
     addLocalPackage(pkgPath) {
       const next = normalizePackagePaths([...(settings.extraExtensions ?? []), pkgPath], cwd);
@@ -1009,6 +1041,9 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         contextWindow: model.contextWindow,
       });
     },
+    getUsageStats() {
+      return buildUsageStatsView(agentDir);
+    },
     setSessionName(name) {
       session.appendSessionInfo(name);
       persistSessionPointer();
@@ -1117,6 +1152,8 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
 
         activeHistory.push(...produced.filter((message) => message !== user));
         activeSession.append({ type: "turn", messages: produced });
+        // 全局用量账本：按 供应商/模型 累计本轮各次调用的输入/输出 token
+        recordProducedUsage(agentDir, produced);
         await runner.emitEvent({ type: "agent_settled" });
         await emitDesktop({
           type: "usage",

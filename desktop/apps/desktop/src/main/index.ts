@@ -161,7 +161,9 @@ app.registerRPC("getActiveSessionId", () => ({
 }));
 app.registerRPC("isBusy", () => ({ busy: requireHost().isBusy() }));
 app.registerRPC("listExtensions", () => requireHost().listExtensions());
+app.registerRPC("reloadExtensions", () => requireHost().reloadExtensions());
 app.registerRPC("listSkills", () => requireHost().listSkills());
+app.registerRPC("listPrompts", () => requireHost().listPrompts());
 app.registerRPC("listLocalPackages", () => requireHost().listLocalPackages());
 app.registerRPC("addLocalPackage", (params: { path?: string }) => {
   if (!params?.path?.trim()) throw new Error("addLocalPackage requires path");
@@ -295,6 +297,7 @@ app.registerRPC("shareSession", (params: { id?: string }) => {
   return { started: true };
 });
 app.registerRPC("getSessionUsage", (params: { id?: string }) => requireHost().getSessionUsage(params?.id));
+app.registerRPC("getUsageStats", () => requireHost().getUsageStats());
 app.registerRPC("setSessionName", (params: { name?: string }) => requireHost().setSessionName(String(params?.name ?? "")));
 app.registerRPC("forkSession", (params: { leafId?: string }) => requireHost().forkSession(params?.leafId));
 app.registerRPC("getModelsJsonConfig", () => requireHost().getModelsJsonConfig());

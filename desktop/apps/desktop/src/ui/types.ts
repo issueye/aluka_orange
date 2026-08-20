@@ -78,6 +78,50 @@ export type SessionUsageView = {
   note: string;
 };
 
+/** 全局用量统计：单模型行（agent 侧 usage-store.ts 的 UI 副本） */
+export type UsageModelStat = {
+  provider: string;
+  model: string;
+  input: number;        // 输入 token 累计
+  output: number;       // 输出 token 累计
+  cacheRead: number;    // 缓存读取累计
+  cacheWrite: number;   // 缓存写入累计
+  totalTokens: number;  // 合计 token
+  calls: number;        // 调用次数
+  share: number;        // 占全局合计的比例（0-1）
+  estimatedCostUsd?: number; // 预估费用（美元；单价未知时省略）
+  lastUsedAt: number;   // 最近使用时间戳（ms）
+};
+
+/** 全局用量统计：供应商分组 */
+export type UsageProviderStat = {
+  provider: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  calls: number;
+  share: number;        // 占全局合计的比例（0-1）
+  models: UsageModelStat[]; // 按 totalTokens 降序
+};
+
+/** 全局用量统计（getUsageStats RPC 结果，来自 ~/.aluka/agent/usage.json） */
+export type UsageStatsView = {
+  totals: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    totalTokens: number;
+    calls: number;
+  };
+  estimatedCostUsd?: number;
+  providers: UsageProviderStat[]; // 按 totalTokens 降序
+  since: number;                  // 最早记录时间戳（ms）
+  updatedAt: number;              // 最近记录时间戳（ms）
+};
+
 /** 扩展 UI 请求：扩展可通过此机制与用户交互 */
 export type ExtensionUiRequest =
   | { id: string; kind: "notify"; message: string; level: "info" | "warning" | "error" }
@@ -105,3 +149,9 @@ export type MarketRow = {
 
 /** 已安装插件条目（listInstalledPackages RPC 结果） */
 export type InstalledPkg = { name: string; version?: string; description?: string };
+
+/** 技能条目（listSkills RPC 结果） */
+export type SkillItem = { name: string; description: string; path: string };
+
+/** 提示词条目（listPrompts RPC 结果，含正文供插入输入框） */
+export type PromptItem = { name: string; description: string; path: string; body: string };

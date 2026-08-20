@@ -34,7 +34,8 @@
   --composer-border: color-mix(in srgb, #ffffff 11%, #2b2b2b);
   --user-bubble: #2f2f2f;
   --user-bubble-border: color-mix(in srgb, #ffffff 10%, transparent);
-  --user-bubble-shadow: 0 1px 2px rgb(0 0 0 / 0.28), 0 8px 24px rgb(0 0 0 / 0.22);
+  --user-bubble-shadow:
+    0 1px 2px rgb(0 0 0 / 0.28), 0 8px 24px rgb(0 0 0 / 0.22);
   --user-bubble-hover-border: color-mix(in srgb, #ffffff 14%, transparent);
   --assistant-bubble: transparent;
   --tool-bubble: #1a1a1a;
@@ -49,7 +50,8 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 12px;
-  --font: "Inter", "SF Pro Text", "Segoe UI", "Noto Sans SC", system-ui, sans-serif;
+  --font:
+    "Inter", "SF Pro Text", "Segoe UI", "Noto Sans SC", system-ui, sans-serif;
   --mono: "SF Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
   --shadow-soft: 0 16px 48px rgb(0 0 0 / 0.45);
   --group-label-color: #747474;
@@ -83,7 +85,8 @@
   --user-bubble: #f6f6f7;
   --user-bubble-border: #e6e6ea;
   --user-bubble-hover-border: #d9d9e0;
-  --user-bubble-shadow: 0 1px 2px rgb(0 0 0 / 0.07), 0 4px 16px rgb(0 0 0 / 0.07);
+  --user-bubble-shadow:
+    0 1px 2px rgb(0 0 0 / 0.07), 0 4px 16px rgb(0 0 0 / 0.07);
   --tool-bubble: #f3f3f0;
   --code-bg: #f4f4f5;
   --group-label-color: #8a8a8a;
@@ -116,8 +119,7 @@ select {
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  display: flex;
   height: 100%;
   width: 100%;
   min-height: 0;
@@ -280,6 +282,33 @@ select {
 .ws-folder-row:hover,
 .ws-folder-row.active {
   background: var(--hover-fill);
+}
+
+/* 工作区行尾移除按钮：悬停行时显现（仅从列表移除，不删除文件） */
+.ws-folder-del {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 24px;
+  margin-right: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.ws-folder-row:hover .ws-folder-del,
+.ws-folder-del:focus-visible {
+  opacity: 1;
+}
+
+.ws-folder-del:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .ws-fold {
@@ -456,6 +485,16 @@ select {
   color: var(--foreground);
 }
 
+.header-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 重载进行中：图标旋转 */
+.header-action svg.is-spinning {
+  animation: ui-spin 0.9s linear infinite;
+}
+
 .composer-workspace {
   align-self: flex-start;
   display: inline-flex;
@@ -587,8 +626,15 @@ select {
   border-top: 1px solid var(--border-subtle);
 }
 
-.ws-settings-list li button {
-  width: 100%;
+.ws-settings-list li {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ws-settings-list li .ws-settings-pick {
+  flex: 1;
+  min-width: 0;
   text-align: left;
   border: 0;
   background: transparent;
@@ -599,13 +645,41 @@ select {
   gap: 2px;
 }
 
-.ws-settings-list li button:hover {
+.ws-settings-list li .ws-settings-pick:hover {
   background: var(--hover-fill);
   border-radius: var(--radius-sm);
 }
 
-.ws-settings-list li.active button strong {
+.ws-settings-list li.active .ws-settings-pick strong {
   color: var(--link);
+}
+
+/* 行尾移除按钮：悬停行时显现 */
+.ws-settings-list li .ws-settings-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.ws-settings-list li:hover .ws-settings-remove,
+.ws-settings-list li .ws-settings-remove:focus-visible {
+  opacity: 1;
+}
+
+.ws-settings-list li .ws-settings-remove:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
 }
 
 .ws-settings-list li span {
@@ -794,7 +868,9 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .window-controls button:hover {
@@ -1242,7 +1318,8 @@ select {
 
 .ctx-ring__fill {
   stroke: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
-  transition: stroke-dashoffset var(--duration-med) var(--ease-out),
+  transition:
+    stroke-dashoffset var(--duration-med) var(--ease-out),
     stroke var(--duration-fast) var(--ease-out);
 }
 
@@ -2004,7 +2081,8 @@ select {
   border-radius: 999px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--muted-foreground) 8%, transparent);
-  transition: border-color var(--duration-fast) var(--ease-out),
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out);
 }
 
@@ -2333,6 +2411,11 @@ select {
   animation: ui-fade-up var(--duration-slow) var(--ease-out);
 }
 
+/* 全宽页面（扩展页：工具 / 提示词 / 技能） */
+.settings-page--full .settings-page-inner {
+  max-width: none;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2424,7 +2507,8 @@ select {
   line-height: 1;
   color: var(--muted-foreground);
   border-bottom: 2px solid transparent;
-  transition: color var(--duration-fast) var(--ease-out),
+  transition:
+    color var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
@@ -2438,6 +2522,16 @@ select {
 .page-tab[data-active="false"] {
   border-bottom-width: 2px;
   border-bottom-style: solid;
+}
+
+/* 二级页签（工具页签内的 已安装 / 发现） */
+.page-tabs--sub {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.page-tabs--sub .page-tab {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .page-tab[data-active="true"] {
@@ -2593,8 +2687,15 @@ select {
 }
 
 @keyframes session-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.8); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
 }
 
 #usage-summary {
@@ -2722,6 +2823,12 @@ select {
   }
 }
 
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes ui-fade-in {
   from {
     opacity: 0;
@@ -2762,5 +2869,355 @@ select {
   .modal,
   .modal-card {
     animation: none;
+  }
+
+  .header-action svg.is-spinning {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────── 用量统计（设置 → 模型 → 用量） ─────────────────────────── */
+
+/* 当前会话卡片与全局统计面板之间的间距 */
+.usage-session-section {
+  margin-top: 28px;
+}
+
+/* 汇总卡片行 */
+.usage-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--border-subtle);
+}
+
+.usage-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--card);
+  min-width: 0;
+}
+
+.usage-stat-label {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.usage-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.usage-summary-meta {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 技能卡片里的文件路径（等宽、可换行） */
+.skill-path {
+  font-family: var(--mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* 图表卡片：左条形对比 + 右占比环 */
+.usage-chart-card {
+  padding: 16px;
+}
+
+.usage-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  gap: 24px;
+}
+
+.usage-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.usage-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+.usage-legend .usage-dot {
+  margin-left: 8px;
+}
+
+.usage-legend .usage-dot:first-child {
+  margin-left: 0;
+}
+
+/* 色点（图例 / 分组标签 / 表格分组行共用） */
+.usage-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+/* 模型用量对比条形图 */
+.usage-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.usage-bars-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.usage-bars-group-label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.usage-model-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.usage-model-label {
+  flex: 0 0 32%;
+  max-width: 32%;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.usage-model-bars {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.usage-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 11px;
+}
+
+.usage-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  min-width: 0;
+  transition: width var(--duration-med) var(--ease-out);
+}
+
+.usage-bar-fill--input {
+  background: #4f8cff;
+}
+
+.usage-bar-fill--output {
+  background: #3ecf8e;
+}
+
+.usage-bar-value {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 供应商占比环 */
+.usage-donut {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.usage-donut-chart {
+  position: relative;
+  flex: 0 0 auto;
+  width: 150px;
+  height: 150px;
+}
+
+.usage-donut-track {
+  stroke: var(--muted);
+}
+
+.usage-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.usage-donut-center strong {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-donut-center span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.usage-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.usage-donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.usage-donut-legend-name {
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.usage-donut-legend-value {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 明细表 */
+.usage-table-wrap {
+  overflow-x: auto;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.usage-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.usage-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.usage-table tbody:last-child tr:last-child td {
+  border-bottom: 0;
+}
+
+.usage-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table th.num {
+  text-align: right;
+}
+
+.usage-table-group td {
+  background: var(--surface-soft);
+}
+
+.usage-table-group-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-table-group-meta {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table-model {
+  font-family: var(--mono);
+  font-size: 12px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.usage-table-strong {
+  font-weight: 600;
+}
+
+.usage-table-time {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+
+@media (max-width: 960px) {
+  .usage-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-model-label {
+    flex: 0 0 40%;
+    max-width: 40%;
   }
 }

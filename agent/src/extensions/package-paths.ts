@@ -1,16 +1,17 @@
 /**
- * 解析 pi / aluka 扩展包入口，并发现 settings.packages 中的 npm:/git: 包。
+ * 解析 aluka 扩展包入口，并发现 settings.packages 中的 npm:/git: 包。
  *
- * 兼容 pi-coding-agent 布局：
- * - ~/.pi/agent/settings.json → packages: ["npm:foo", "git:github.com/org/repo"]
- * - ~/.pi/agent/npm/node_modules/<pkg>
- * - ~/.pi/agent/git/github.com/org/repo
+ * 目录布局（均在 Aluka 自己的 agentDir 下，不扫描 ~/.pi）：
+ * - ~/.aluka/agent/settings.json → packages: ["npm:foo", "git:github.com/org/repo"]
+ * - ~/.aluka/agent/npm/node_modules/<pkg>
+ * - ~/.aluka/agent/npm-packages/node_modules/<pkg>
+ * - ~/.aluka/agent/git/github.com/org/repo
  * - package.json → pi.extensions[] / aluka.extensions[]（亦可单数字段 extension）
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { getAgentDir, getPiAgentDir } from "../config.ts";
+import { getAgentDir } from "../config.ts";
 
 function readJson(file: string): Record<string, unknown> | undefined {
   try {
@@ -164,18 +165,17 @@ function readPackagesList(file: string): string[] {
 }
 
 /**
- * 从 pi/aluka settings 的 packages 字段发现扩展入口路径。
- * @param agentDirs 可注入（测试）；默认 [~/.pi/agent, ~/.aluka/agent]
+ * 从 aluka settings 的 packages 字段发现扩展入口路径（不扫描 .pi 目录）。
+ * @param agentDirs 可注入（测试）；默认 [~/.aluka/agent]
  */
 export function discoverPackageExtensionPaths(options?: {
   cwd?: string;
   agentDirs?: string[];
 }): string[] {
-  const agentDirs = options?.agentDirs ?? [getPiAgentDir(), getAgentDir()];
+  const agentDirs = options?.agentDirs ?? [getAgentDir()];
   const cwd = options?.cwd ?? process.cwd();
   const settingsFiles = [
     ...agentDirs.map((d) => path.join(d, "settings.json")),
-    path.join(cwd, ".pi", "settings.json"),
     path.join(cwd, ".aluka", "settings.json"),
   ];
 

@@ -14,6 +14,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { getAgentDir } from "../config.ts";
 
 /** 技能文件的 frontmatter 字段 */
 export interface SkillFrontmatter {
@@ -36,20 +37,16 @@ export interface Skill {
 /**
  * 加载所有可用技能
  *
- * 从以下目录搜索技能文件：
- * - {cwd}/.pi/skills/
+ * 从以下目录搜索技能文件（不扫描 .pi 目录，保持 Aluka 独立）：
  * - {cwd}/.aluka/skills/
- * - {home}/.pi/agent/skills/
  * - {home}/.aluka/agent/skills/
  *
  * 同名技能以后面的覆盖前面的
  */
 export function loadSkills(cwd: string): Skill[] {
   const dirs = [
-    path.join(cwd, ".pi", "skills"),
     path.join(cwd, ".aluka", "skills"),
-    path.join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".pi", "agent", "skills"),
-    path.join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".aluka", "agent", "skills"),
+    path.join(getAgentDir(), "skills"),
   ];
   const skills: Skill[] = [];
   for (const dir of dirs) {
