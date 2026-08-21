@@ -13,6 +13,7 @@ import { VERSION } from "../../../../../agent/src/config.ts";
 import { coerceApi } from "../../../../../agent/src/ai/types.ts";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -125,6 +126,26 @@ app.registerRPC("createTempWorkspace", (params?: { mode?: "latest" | "new" }) =>
 app.registerRPC("removeWorkspace", (params: { path?: string }) => {
   if (!params?.path?.trim()) throw new Error("removeWorkspace requires path");
   return requireHost().removeWorkspace(params.path.trim());
+});
+app.registerRPC("revealFolder", (params: { path?: string }) => {
+  if (!params?.path?.trim()) throw new Error("revealFolder requires path");
+  const resolved = path.resolve(params.path.trim());
+  if (!fs.existsSync(resolved)) throw new Error(`文件夹不存在：${params.path}`);
+  let cmd = "/usr/bin/xdg-open";
+  let args: string[] = [resolved];
+  if (process.platform === "win32") {
+    cmd = path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe");
+    args = [resolved];
+  } else if (process.platform === "darwin") {
+    cmd = "/usr/bin/open";
+  }
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    return { ok: true };
+  } catch {
+    throw new Error("无法打开文件夹");
+  }
 });
 app.registerRPC("chooseWorkspace", (params?: { mode?: "latest" | "new" }) => {
   const mode = params?.mode === "new" ? "new" : "latest";

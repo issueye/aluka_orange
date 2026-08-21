@@ -313,13 +313,26 @@ export function App() {
           await refreshSessions();
           await loadSettings();
         }
-        toast("已从列表移除工作区（未删除磁盘文件）", "info");
+      toast("已从列表移除工作区（未删除磁盘文件）", "info");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
+    }
+  },
+  [loadSettings, refreshSessions, selectWorkspace, settings.cwd, toast],
+);
+
+  /** 在系统文件管理器中打开工作区所在文件夹 */
+  const revealFolder = useCallback(
+    async (dir: string) => {
+      try {
+        await rpc("revealFolder", { path: dir });
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), "error");
       }
     },
-    [loadSettings, refreshSessions, selectWorkspace, settings.cwd, toast],
+    [toast],
   );
+
 
   const toggleSidebar = useCallback((next?: boolean) => {
     setSidebarCollapsed((prev) => {
@@ -844,6 +857,7 @@ export function App() {
             onCreateTemp={() => void createTempWorkspace()}
             onDeleteSession={(id, cwd) => void deleteSession(id, cwd)}
             onRemoveWorkspace={(cwd) => void removeWorkspace(cwd)}
+            onRevealFolder={(cwd) => void revealFolder(cwd)}
             onCollapseSidebar={() => toggleSidebar(true)}
           />
         )}

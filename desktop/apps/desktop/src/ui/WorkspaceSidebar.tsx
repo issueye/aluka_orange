@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Filter, Folder, FolderPlus, PanelLeftClose, SquarePen, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Filter, Folder, FolderOpen, FolderPlus, PanelLeftClose, SquarePen, Trash2 } from "lucide-react";
 import { Logo } from "./Logo";
 
 export type WorkspaceSession = {
@@ -54,6 +54,8 @@ type WorkspaceSidebarProps = {
   onDeleteSession: (id: string, cwd: string) => void;
   /** 从列表移除工作区（不删除磁盘文件） */
   onRemoveWorkspace: (cwd: string) => void;
+  /** 在系统文件管理器中打开工作区所在文件夹 */
+  onRevealFolder: (cwd: string) => void;
   onCollapseSidebar: () => void;
 };
 
@@ -69,6 +71,7 @@ export function WorkspaceSidebar({
   onCreateTemp,
   onDeleteSession,
   onRemoveWorkspace,
+  onRevealFolder,
   onCollapseSidebar,
 }: WorkspaceSidebarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
@@ -186,6 +189,17 @@ export function WorkspaceSidebar({
                 >
                   <Folder size={15} />
                   <span className="ws-folder-name">{ws.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="ws-folder-del ws-folder-open"
+                  title={`打开所在文件夹：${ws.path}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRevealFolder(ws.path);
+                  }}
+                >
+                  <FolderOpen size={13} />
                 </button>
                 <button
                   type="button"

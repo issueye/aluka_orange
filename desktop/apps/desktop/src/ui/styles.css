@@ -311,6 +311,12 @@ select {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
+/* 目录行"在文件管理器中打开"按钮：复用 ws-folder-del 布局，悬停用主题主色而非删除色 */
+.ws-folder-open:hover {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
 .ws-fold {
   flex: 0 0 22px;
   width: 22px;
@@ -889,7 +895,7 @@ select {
   padding: 24px 28px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   align-items: center;
 }
 
