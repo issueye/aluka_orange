@@ -19,15 +19,16 @@
   --surface-muted: #383838;
   --surface-soft: #272727;
   --card: var(--surface-panel);
-  --primary: oklch(0.72 0.12 255);
-  --primary-foreground: oklch(0.18 0.01 260);
+  /* 品牌主色取自 Logo（橙光剖面）：深橙 E8590C / 亮橙 FF8A2A / 奶油白 FFF6EA */
+  --primary: #e8590c;
+  --primary-foreground: #fff6ea;
   --muted: #222222;
   --muted-foreground: #acacac;
   --hover-fill: var(--surface-muted);
   --destructive: oklch(0.72 0.17 25);
   --border: #3c3c3c;
   --border-subtle: color-mix(in srgb, #ffffff 11%, transparent);
-  --link: #379cfc;
+  --link: #ff8a2a;
   --sidebar: #151515;
   --sidebar-border: #383838;
   --bg-composer: #2b2b2b;
@@ -69,15 +70,16 @@
   --surface-muted: #f6f6f6;
   --surface-soft: #f5f5f5;
   --card: var(--surface-panel);
-  --primary: #171717;
-  --primary-foreground: #fafafa;
+  /* 品牌主色取自 Logo 深橙 E8590C；链接为同色相加深档（白底对比 5.2:1） */
+  --primary: #e8590c;
+  --primary-foreground: #fff6ea;
   --muted: #f0f0f0;
   --muted-foreground: #6b6b6b;
   --hover-fill: var(--surface-muted);
   --destructive: #c0392b;
   --border: #e2e5eb;
   --border-subtle: color-mix(in srgb, #000 6%, transparent);
-  --link: #0a84ff;
+  --link: #c2410c;
   --sidebar: #f1f2f4;
   --sidebar-border: #e2e5eb;
   --bg-composer: #ffffff;
@@ -150,6 +152,52 @@ select {
   background: var(--sidebar);
   border-right: 1px solid var(--sidebar-border);
   user-select: none;
+}
+
+/* —— 侧栏收起/展开过渡：仅在切换期间由 .sidebar-animating 激活 ——
+   常驻 transition 会让视图切换（main-col 宽度 100%↔calc）等场景也被拖慢，故按需挂载 */
+.app-shell.sidebar-animating .sidebar {
+  transition: width var(--duration-slow) var(--ease-out);
+  overflow: hidden;
+}
+
+.app-shell.sidebar-animating .main-col {
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+/* 收起后的窄轨 / 展开后的树内容交叉淡入 */
+.app-shell.sidebar-animating .sidebar-rail,
+.app-shell.sidebar-animating .sidebar-brand,
+.app-shell.sidebar-animating .ws-head,
+.app-shell.sidebar-animating .ws-filter,
+.app-shell.sidebar-animating .ws-tree {
+  animation: sidebar-content-in var(--duration-slow) var(--ease-out);
+}
+
+@keyframes sidebar-content-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.sidebar-animating .sidebar,
+  .app-shell.sidebar-animating .main-col {
+    transition: none;
+  }
+
+  .app-shell.sidebar-animating .sidebar-rail,
+  .app-shell.sidebar-animating .sidebar-brand,
+  .app-shell.sidebar-animating .ws-head,
+  .app-shell.sidebar-animating .ws-filter,
+  .app-shell.sidebar-animating .ws-tree {
+    animation: none;
+  }
 }
 
 .sidebar-brand {
@@ -315,6 +363,12 @@ select {
 .ws-folder-open:hover {
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* 目录行"在此工作区新建会话"按钮：悬停用成功色 */
+.ws-folder-new:hover {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, transparent);
 }
 
 .ws-fold {
@@ -1322,8 +1376,9 @@ select {
   stroke: color-mix(in srgb, var(--muted-foreground) 28%, transparent);
 }
 
+/* 常态为品牌橙；占用升高后切换语义色（黄→红） */
 .ctx-ring__fill {
-  stroke: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
+  stroke: var(--primary);
   transition:
     stroke-dashoffset var(--duration-med) var(--ease-out),
     stroke var(--duration-fast) var(--ease-out);
@@ -2689,7 +2744,7 @@ select {
   height: 7px;
   border-radius: 50%;
   flex: 0 0 auto;
-  background: var(--orange, #ff8a2a);
+  background: var(--primary);
   animation: session-pulse 1.2s ease-in-out infinite;
 }
 
@@ -2724,6 +2779,9 @@ select {
 
 .toast {
   pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -2731,6 +2789,15 @@ select {
   font-size: 13px;
   box-shadow: var(--shadow-soft);
   animation: ui-toast-in var(--duration-slow) var(--ease-out);
+}
+
+.toast__icon {
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+.toast.success {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
 }
 
 .toast.error {
@@ -2992,11 +3059,11 @@ select {
 }
 
 .usage-bar-fill--input {
-  background: #4f8cff;
+  background: var(--primary);
 }
 
 .usage-bar-fill--output {
-  background: #3ecf8e;
+  background: var(--success);
 }
 
 .usage-bar-value {
@@ -3318,6 +3385,53 @@ select {
 
 .ui-dialog__message:last-child {
   margin-bottom: 0;
+}
+
+/* —— 外观 → 界面尺寸（侧栏宽度预览与控制） —— */
+.sidebar-width-preview {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.sidebar-width-preview__bar {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-height: 36px;
+  border: 1px dashed color-mix(in srgb, var(--link) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--link) 10%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.sidebar-width-preview__rest {
+  flex: 1 1 0;
+  min-width: 40px;
+  min-height: 36px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.sidebar-width-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .ext-head-loading,

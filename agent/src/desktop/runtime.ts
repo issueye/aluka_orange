@@ -601,15 +601,21 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   };
 
   function persistWorkspaceState(extra: DesktopSettings = {}) {
-    settings = saveSettings(
-      {
-        ...settings,
-        ...extra,
-        cwd,
-        workspaces: workspacePaths,
-      },
-      agentDir,
-    );
+    const next: DesktopSettings = { ...settings, ...extra, cwd, workspaces: workspacePaths };
+    // 会话/工作区切换每次都会经过这里（applyWorkspace + bindSession 各一次）；
+    // 内容无变化时跳过磁盘读写，避免高频点击下的同步 IO
+    const extraKeys = Object.keys(extra) as (keyof DesktopSettings)[];
+    const unchanged =
+      next.cwd === settings.cwd &&
+      next.lastSessionId === settings.lastSessionId &&
+      next.workspaces?.length === settings.workspaces?.length &&
+      next.workspaces?.every((item, i) => item === settings.workspaces?.[i]) &&
+      extraKeys.every((key) => JSON.stringify(extra[key]) === JSON.stringify(settings[key]));
+    if (unchanged) {
+      settings = next;
+      return;
+    }
+    settings = saveSettings(next, agentDir);
   }
 
   function persistSessionPointer() {
@@ -650,14 +656,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         sessions,
       };
     });
-    views.sort((a, b) => {
-      if (samePath(a.path, cwd) && !samePath(b.path, cwd)) return -1;
-      if (samePath(b.path, cwd) && !samePath(a.path, cwd)) return 1;
-      const aTime = a.sessions[0]?.mtime ?? 0;
-      const bTime = b.sessions[0]?.mtime ?? 0;
-      if (aTime !== bTime) return bTime - aTime;
-      return a.name.localeCompare(b.name);
-    });
+    // 保持稳定顺序：按工作区加入顺序展示，不随点击会话 / 切换工作区重排
     return views;
   }
 

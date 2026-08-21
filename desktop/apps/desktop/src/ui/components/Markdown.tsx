@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -70,8 +70,9 @@ const components: Components = {
 /**
  * 助手消息 Markdown 渲染（GFM：表格 / 任务列表 / 删除线 / 自动链接 / 图片）。
  * 默认不渲染原始 HTML，降低 XSS 风险；图片点击后灯箱放大查看。
+ * memo：时间线重渲染（流式 delta、状态更新）时文本未变的消息跳过重新解析。
  */
-export function Markdown({ children, className = "" }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ children, className = "" }: MarkdownProps) {
   const text = children ?? "";
   if (!text.trim()) return null;
 
@@ -82,4 +83,4 @@ export function Markdown({ children, className = "" }: MarkdownProps) {
       </ReactMarkdown>
     </div>
   );
-}
+});

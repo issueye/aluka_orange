@@ -91,6 +91,17 @@ function loadEntriesFromFile(filePath: string): FileEntry[] {
   return parseSessionEntries(fs.readFileSync(filePath, "utf8"));
 }
 
+/**
+ * list() 摘要缓存：按文件 + mtime + size 命中。
+ * 侧栏每次点击会话都会触发 listSessions / listWorkspaces，全量解析所有
+ * JSONL 代价高且内容基本不变；append-only 的会话文件 mtime+size 变化即失效。
+ */
+const listSummaryCache = new Map<string, { mtimeMs: number; size: number; summary: SessionSummary }>();
+
+function cacheKeyForFile(file: string): string {
+  return process.platform === "win32" ? file.toLowerCase() : file;
+}
+
 export class SessionManager {
   private sessionId = "";
   private sessionFile: string | undefined;
@@ -517,11 +528,17 @@ export class SessionManager {
       .map((file) => {
         const full = path.join(dir, file);
         const st = fs.statSync(full);
+        const hit = listSummaryCache.get(cacheKeyForFile(full));
+        if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+          return hit.summary;
+        }
         const entries = loadEntriesFromFile(full);
-        return summarizeSessionFile(full, sessionFileId(full), entries, {
+        const summary = summarizeSessionFile(full, sessionFileId(full), entries, {
           mtimeMs: st.mtimeMs,
           ctimeMs: st.birthtimeMs || st.ctimeMs,
         });
+        listSummaryCache.set(cacheKeyForFile(full), { mtimeMs: st.mtimeMs, size: st.size, summary });
+        return summary;
       })
       .sort((a, b) => b.mtime - a.mtime);
   }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Minus,
   Square,
@@ -10,6 +10,7 @@ import {
   PanelLeft,
   SquarePen,
   RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { bridge, rpc } from "./bridge.ts";
 import { Logo } from "./Logo.tsx";
@@ -210,35 +211,33 @@ export function App() {
         }
         setAttachments([]);
         setActiveId(opened.id || undefined);
-        const s = await rpc<SettingsState>("getSettings");
-        setSettings({ ...s, cwd: opened.cwd });
         sessionRef.current = { cwd: opened.cwd, id: opened.id || undefined };
+        // openSession 已带回时间线，不再重复拉 getTimeline；回退本地缓存
         const next = preferTimeline(
-          await fetchHostTimeline(opened.cwd, opened.id),
-          preferTimeline(
-            opened.timeline ?? [],
-            timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? [],
-          ),
+          opened.timeline ?? [],
+          timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? [],
         );
         rememberTimeline(opened.cwd, opened.id, next);
-        setTimeline(next);
         streamingRef.current = "";
         setStreaming("");
         setView("chat");
-        // 同步目标会话的忙碌状态（切回后台仍在运行会话时保持 composer 禁用）
-        try {
-          const busyState = await rpc<{ busy?: boolean }>("isBusy");
-          setBusy(Boolean(busyState?.busy));
-        } catch {
-          setBusy(false);
-        }
-        await refreshSessions();
-        await refreshUsage(opened.id);
+        setSettings((prev) => ({ ...prev, cwd: opened.cwd }));
+        // 长会话时间线渲染量大：放进 transition，让侧栏高亮等紧急更新先上屏
+        startTransition(() => {
+          setTimeline(next);
+        });
+        // 剩余数据并行拉取（此前逐个 await 串行等待）
+        const [busyState] = await Promise.all([
+          rpc<{ busy?: boolean }>("isBusy").catch(() => ({ busy: false })),
+          refreshSessions(),
+          refreshUsage(opened.id),
+        ]);
+        setBusy(Boolean(busyState?.busy));
       } finally {
         setSessionLoading(false);
       }
     },
-    [fetchHostTimeline, rememberTimeline, refreshSessions, refreshUsage],
+    [rememberTimeline, refreshSessions, refreshUsage],
   );
 
   const showChat = useCallback(async () => {
@@ -265,6 +264,15 @@ export function App() {
     });
     await applyOpened({ ...created, timeline: [] });
   }, [applyOpened, settings.cwd]);
+
+  /** 在指定工作区新建会话并切换到该会话（侧栏工作区项“+”按钮） */
+  const createNewChatIn = useCallback(
+    async (cwd: string) => {
+      const created = await rpc<OpenedSession>("createSession", { cwd });
+      await applyOpened({ ...created, timeline: [] });
+    },
+    [applyOpened],
+  );
 
   const selectWorkspace = useCallback(
     async (dir: string, mode: "latest" | "new" = "latest") => {
@@ -380,6 +388,10 @@ export function App() {
   );
 
 
+  /** 侧栏收起/展开动画窗口：切换期间挂过渡类，结束后移除（避免常驻 transition 拖慢视图切换等场景） */
+  const [sidebarAnimating, setSidebarAnimating] = useState(false);
+  const sidebarAnimTimer = useRef<number | undefined>(undefined);
+
   const toggleSidebar = useCallback((next?: boolean) => {
     setSidebarCollapsed((prev) => {
       const collapsed = next ?? !prev;
@@ -390,7 +402,12 @@ export function App() {
       }
       return collapsed;
     });
+    window.clearTimeout(sidebarAnimTimer.current);
+    setSidebarAnimating(true);
+    sidebarAnimTimer.current = window.setTimeout(() => setSidebarAnimating(false), 320);
   }, []);
+
+  useEffect(() => () => window.clearTimeout(sidebarAnimTimer.current), []);
 
   const createTempWorkspace = useCallback(async () => {
     const opened = await rpc<OpenedSession>("createTempWorkspace", {
@@ -509,6 +526,16 @@ export function App() {
   useEffect(() => {
     activeIdRef.current = activeId;
   }, [activeId]);
+
+  /** 侧栏宽度：设置里的数值即时写入 CSS 变量（未设置时移除，回落样式表默认 288px） */
+  useEffect(() => {
+    const w = settings.sidebarWidth;
+    if (typeof w === "number" && Number.isFinite(w)) {
+      document.documentElement.style.setProperty("--sidebar-width", `${Math.round(w)}px`);
+    } else {
+      document.documentElement.style.removeProperty("--sidebar-width");
+    }
+  }, [settings.sidebarWidth]);
 
   /**
    * 运行时事件监听 Effect
@@ -897,7 +924,7 @@ export function App() {
 
   return (
     <div
-      className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${view !== "chat" ? "settings-mode" : ""} ${sidebarCollapsed && view === "chat" ? "sidebar-collapsed" : ""}`}
+      className={`app-shell ${view !== "chat" ? "settings-open" : ""} ${view !== "chat" ? "settings-mode" : ""} ${sidebarCollapsed && view === "chat" ? "sidebar-collapsed" : ""} ${sidebarAnimating ? "sidebar-animating" : ""}`}
       data-theme={theme}
     >
       <aside
@@ -925,6 +952,7 @@ export function App() {
             activeSessionId={activeId}
             busySessionIds={busyIds}
             onNewChat={() => void createNewChat()}
+            onNewChatIn={(cwd) => void createNewChatIn(cwd)}
             onOpenSession={(id, cwd) => void openSession(id, cwd)}
             onSelectWorkspace={(cwd) => void selectWorkspace(cwd, "latest")}
             onAddWorkspace={() => void chooseWorkspace("latest")}
@@ -1102,7 +1130,8 @@ export function App() {
       <div className="toast-stack">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.level}`}>
-            {t.message}
+            {t.level === "success" ? <CheckCircle2 size={14} className="toast__icon" /> : null}
+            <span>{t.message}</span>
           </div>
         ))}
       </div>

@@ -10,7 +10,8 @@
     "noEmit": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["src/ui/**/*.ts", "src/ui/**/*.tsx"]
 }

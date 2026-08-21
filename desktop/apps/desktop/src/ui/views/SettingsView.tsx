@@ -21,7 +21,7 @@ import type { LucideIcon } from "lucide-react";
 import { rpc } from "../bridge.ts";
 import { ProvidersPanel } from "../ProvidersPanel.tsx";
 import { UsagePanel } from "../UsagePanel.tsx";
-import { Button, Input, Switch } from "../components/index.ts";
+import { Button, Input, Slider, Switch } from "../components/index.ts";
 import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
 import type {
   SessionUsageView,
@@ -32,6 +32,11 @@ import { pathsEqual, formatUsage } from "../lib/utils.ts";
 
 /** 设置页内的子分区 */
 type SettingsSection = "workspace" | "providers" | "appearance" | "usage" | "about";
+
+/** 侧栏宽度默认值 / 允许范围（与 agent 侧 settings.ts 约定一致） */
+const SIDEBAR_WIDTH_DEFAULT = 288;
+const SIDEBAR_WIDTH_MIN = 220;
+const SIDEBAR_WIDTH_MAX = 480;
 
 /** 设置页左侧导航：分组 + 图标（参考 zeno settings rail 的信息架构） */
 const SETTINGS_NAV_GROUPS: Array<{
@@ -118,7 +123,7 @@ export function SettingsView(props: {
     })).filter((group) => group.items.length > 0);
   }, [navQuery]);
 
-  /** 保存通用设置（cwd / 模型 / 供应商 / baseUrl / 主题 / API Key） */
+  /** 保存通用设置（cwd / 模型 / 供应商 / baseUrl / 主题 / 侧栏宽度 / API Key） */
   async function saveGeneralSettings() {
     const patch: Record<string, unknown> = {
       cwd: (settings.cwd ?? "").trim(),
@@ -126,13 +131,14 @@ export function SettingsView(props: {
       provider: (settings.provider ?? "").trim(),
       baseUrl: (settings.baseUrl ?? "").trim(),
       theme: props.theme,
+      sidebarWidth: settings.sidebarWidth ?? SIDEBAR_WIDTH_DEFAULT,
     };
     if (apiKeyDraft.trim()) patch.apiKey = apiKeyDraft.trim();
     await rpc("patchSettings", patch);
     setApiKeyDraft("");
     await props.loadSettings();
     await props.refreshSessions();
-    toast("设置已保存", "info");
+    toast("设置已保存", "success");
   }
 
   return (
@@ -318,6 +324,48 @@ export function SettingsView(props: {
                           document.documentElement.setAttribute("data-theme", next);
                         }}
                       />
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section className="settings-section-block">
+                <h2 className="settings-section-label">界面尺寸</h2>
+                <div className="settings-card">
+                  <div className="settings-row settings-row-col settings-row-last">
+                    <div className="settings-row-copy">
+                      <div className="settings-row-title">侧栏宽度</div>
+                      <div className="settings-row-desc">
+                        拖动调节左侧栏宽度（{SIDEBAR_WIDTH_MIN}–{SIDEBAR_WIDTH_MAX}px），调节即时生效，保存后写入设置。下图按实际像素比例预览。
+                      </div>
+                      <div className="sidebar-width-preview">
+                        <div
+                          className="sidebar-width-preview__bar"
+                          style={{ width: `${settings.sidebarWidth ?? SIDEBAR_WIDTH_DEFAULT}px` }}
+                        >
+                          <span>侧栏 {settings.sidebarWidth ?? SIDEBAR_WIDTH_DEFAULT}px</span>
+                        </div>
+                        <div className="sidebar-width-preview__rest">对话区</div>
+                      </div>
+                    </div>
+                    <div className="settings-row-stack">
+                      <div className="sidebar-width-controls">
+                        <Slider
+                          value={settings.sidebarWidth ?? SIDEBAR_WIDTH_DEFAULT}
+                          min={SIDEBAR_WIDTH_MIN}
+                          max={SIDEBAR_WIDTH_MAX}
+                          step={4}
+                          suffix="px"
+                          onChange={(next) => setSettings((s) => ({ ...s, sidebarWidth: next }))}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={(settings.sidebarWidth ?? SIDEBAR_WIDTH_DEFAULT) === SIDEBAR_WIDTH_DEFAULT}
+                          onClick={() => setSettings((s) => ({ ...s, sidebarWidth: SIDEBAR_WIDTH_DEFAULT }))}
+                        >
+                          默认
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

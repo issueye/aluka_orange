@@ -74,6 +74,7 @@ type SettingsPatch = {
   theme?: "dark" | "light";
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   extraExtensions?: string[];
+  sidebarWidth?: number;
 };
 
 let host: DesktopHost | undefined;

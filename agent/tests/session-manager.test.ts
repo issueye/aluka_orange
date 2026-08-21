@@ -45,6 +45,23 @@ describe("SessionManager tree format", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("list() summary cache refreshes when a session file changes", () => {
+    const dir = tmpDir();
+    const session = SessionManager.create(dir, "cached.jsonl", dir);
+    session.append({ type: "user", text: "first" });
+
+    const before = SessionManager.list(dir);
+    assert.equal(before[0]?.title, "first");
+
+    // 追加内容后（size/mtime 变化），缓存必须失效并给出新摘要
+    session.append({ type: "user", text: "second question" });
+    const after = SessionManager.list(dir);
+    assert.equal(after[0]?.title, "first");
+    assert.equal(after[0]?.messageCount, 2);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("migrates legacy linear user/turn files on open", () => {
     const dir = tmpDir();
     const file = path.join(dir, "old.jsonl");

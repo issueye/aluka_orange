@@ -10,3 +10,4 @@ export { Dialog, type DialogProps } from "./Dialog.tsx";
 export { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog.tsx";
 export { Spinner, LoadingBlock, type SpinnerProps, type LoadingBlockProps } from "./Spinner.tsx";
 export { ImageViewer, type ImageViewerProps } from "./ImageViewer.tsx";
+export { Slider, type SliderProps } from "./Slider.tsx";

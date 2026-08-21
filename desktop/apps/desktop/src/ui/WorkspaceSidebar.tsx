@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Filter, Folder, FolderOpen, FolderPlus, PanelLeftClose, SquarePen, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Filter, Folder, FolderOpen, FolderPlus, PanelLeftClose, Plus, SquarePen, Trash2 } from "lucide-react";
 import { Logo } from "./Logo";
 
 export type WorkspaceSession = {
@@ -47,6 +47,8 @@ type WorkspaceSidebarProps = {
   /** 正在运行的会话（含后台并行会话），用于显示运行中标记 */
   busySessionIds?: Set<string>;
   onNewChat: () => void;
+  /** 在指定工作区新建会话并切换到该会话 */
+  onNewChatIn: (cwd: string) => void;
   onOpenSession: (id: string, cwd: string) => void;
   onSelectWorkspace: (cwd: string) => void;
   onAddWorkspace: () => void;
@@ -65,6 +67,7 @@ export function WorkspaceSidebar({
   activeSessionId,
   busySessionIds,
   onNewChat,
+  onNewChatIn,
   onOpenSession,
   onSelectWorkspace,
   onAddWorkspace,
@@ -189,6 +192,17 @@ export function WorkspaceSidebar({
                 >
                   <Folder size={15} />
                   <span className="ws-folder-name">{ws.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="ws-folder-del ws-folder-new"
+                  title={`在此工作区新建会话：${ws.path}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNewChatIn(ws.path);
+                  }}
+                >
+                  <Plus size={14} />
                 </button>
                 <button
                   type="button"

@@ -58,8 +58,10 @@ export function normalizeWorkspaceList(paths: Array<string | undefined>, current
   return out;
 }
 
+/** 记住工作区：已存在则保持原位（点击会话/切换工作区不重排侧栏列表），新工作区追加到末尾 */
 export function rememberWorkspace(list: string[], dir: string): string[] {
-  return normalizeWorkspaceList([dir, ...list], dir);
+  const known = list.some((item) => samePath(item, dir));
+  return normalizeWorkspaceList(known ? list : [...list, dir], dir);
 }
 
 export function forgetWorkspace(list: string[], dir: string): string[] {

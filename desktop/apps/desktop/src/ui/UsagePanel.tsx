@@ -10,15 +10,15 @@ import { bridge, rpc } from "./bridge.ts";
 import { LoadingBlock } from "./components/index.ts";
 import type { UsageProviderStat, UsageStatsView } from "./types.ts";
 
-/** 供应商配色（深/浅主题下均可读）；供应商数超出后循环取色 */
+/** 供应商配色（深/浅主题下均可读）；供应商数超出后循环取色。首色为品牌深橙（同 Logo 主色），兼作输入 token 图表色 */
 const PROVIDER_COLORS = [
-  "#4f8cff",
+  "#e8590c",
   "#3ecf8e",
+  "#4f8cff",
   "#f0a500",
   "#b57be0",
   "#e0656a",
   "#38b6c4",
-  "#d98a4a",
   "#8fbf4d",
 ];
 

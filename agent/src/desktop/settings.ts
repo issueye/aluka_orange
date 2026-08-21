@@ -15,6 +15,17 @@ const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium
 
 export type ThemeId = "dark" | "light";
 
+/** 侧栏宽度允许范围（px）；越界值加载/保存时被钳制 */
+export const SIDEBAR_WIDTH_MIN = 220;
+export const SIDEBAR_WIDTH_MAX = 480;
+export const SIDEBAR_WIDTH_DEFAULT = 288;
+
+/** 钳制侧栏宽度到允许范围；非法值回退默认 */
+function clampSidebarWidth(value: unknown): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : SIDEBAR_WIDTH_DEFAULT;
+  return Math.round(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, n)));
+}
+
 export interface DesktopSettings {
   model?: string;
   provider?: string;
@@ -31,6 +42,8 @@ export interface DesktopSettings {
   thinkingLevel?: ThinkingLevel;
   /** 额外扩展路径（绝对或相对 cwd） */
   extraExtensions?: string[];
+  /** 侧栏宽度（px，220–480）；UI 外观设置写入 */
+  sidebarWidth?: number;
 }
 
 /** 落盘形态：含 pi 兼容的 extensions[] */
@@ -54,6 +67,12 @@ function normalizeLoaded(raw: SettingsFile): DesktopSettings {
   }
   if (out.thinkingLevel && !THINKING_LEVELS.has(out.thinkingLevel)) {
     delete out.thinkingLevel;
+  }
+  if (out.sidebarWidth !== undefined) {
+    const clamped = clampSidebarWidth(out.sidebarWidth);
+    // 默认值不落盘，保持 settings.json 精简
+    if (clamped === SIDEBAR_WIDTH_DEFAULT) delete out.sidebarWidth;
+    else out.sidebarWidth = clamped;
   }
   if (Array.isArray(out.workspaces)) {
     const dirs = out.workspaces.map(String).map((p) => p.trim()).filter(Boolean);

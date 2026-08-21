@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { rpc } from "./bridge.ts";
 import { Button, ConfirmDialog, Dialog, Field, Input, Select } from "./components/index.ts";
+import type { Toast } from "./types.ts";
 
 /**
  * ProvidersPanel - 供应商管理面板
@@ -194,7 +195,7 @@ function visibleRemoteModels(picker: FetchPicker): RemoteModel[] {
 export function ProvidersPanel(props: {
   activeProvider?: string;
   activeModel?: string;
-  onToast: (message: string, level?: "info" | "warning" | "error") => void;
+  onToast: (message: string, level?: Toast["level"]) => void;
   onActiveChanged: () => void;
 }) {
   const [config, setConfig] = useState<ModelsJsonConfigView | undefined>(); // 当前配置
@@ -370,7 +371,7 @@ export function ProvidersPanel(props: {
       setConfig(next);
       closeProviderDialog();
       setSelectedId(draft.provider.trim());
-      props.onToast("供应商已保存", "info");
+      props.onToast("供应商已保存", "success");
       props.onActiveChanged();
     } catch (err) {
       props.onToast(err instanceof Error ? err.message : String(err), "error");
@@ -402,7 +403,7 @@ export function ProvidersPanel(props: {
           previousModelId: draft.previousModelId,
         });
         setConfig(next);
-        props.onToast("模型已保存", "info");
+        props.onToast("模型已保存", "success");
       } else {
         const next = await rpc<ModelsJsonConfigView>("addProviderModels", {
           provider: draft.provider.trim(),
@@ -413,7 +414,7 @@ export function ProvidersPanel(props: {
           }],
         });
         setConfig(next);
-        props.onToast(`已向 ${draft.provider} 添加模型 ${modelId}`, "info");
+        props.onToast(`已向 ${draft.provider} 添加模型 ${modelId}`, "success");
       }
       closeModelDialog();
       props.onActiveChanged();
@@ -459,14 +460,14 @@ export function ProvidersPanel(props: {
           });
         }
         setConfig(next);
-        props.onToast(`${def.name} 已启用（${def.models.length} 个模型）`, "info");
+        props.onToast(`${def.name} 已启用（${def.models.length} 个模型）`, "success");
       } else if (apiKey.trim()) {
         const next = await rpc<ModelsJsonConfigView>("setProviderApiKey", {
           provider: def.id,
           apiKey: apiKey.trim(),
         });
         setConfig(next);
-        props.onToast(`已保存 ${def.name} 的 API 密钥`, "info");
+        props.onToast(`已保存 ${def.name} 的 API 密钥`, "success");
       } else {
         props.onToast(`${def.name} 已在自定义列表中`, "info");
       }
@@ -614,7 +615,7 @@ export function ProvidersPanel(props: {
       setFetchPicker(undefined);
       closeProviderDialog();
       closeModelDialog();
-      props.onToast(`已导入 ${models.length} 个模型`, "info");
+      props.onToast(`已导入 ${models.length} 个模型`, "success");
       props.onActiveChanged();
     } catch (err) {
       props.onToast(err instanceof Error ? err.message : String(err), "error");
@@ -716,7 +717,7 @@ export function ProvidersPanel(props: {
       setConfig(next);
       if (renamed) setSelectedId(nextForm.name.trim());
       setForm((d) => ({ ...d, apiKey: "" }));
-      props.onToast("供应商已保存", "info");
+      props.onToast("供应商已保存", "success");
       props.onActiveChanged();
     } catch (err) {
       props.onToast(err instanceof Error ? err.message : String(err), "error");
@@ -738,7 +739,7 @@ export function ProvidersPanel(props: {
         });
         setConfig(next);
         setForm((d) => ({ ...d, apiKey: "" }));
-        props.onToast(`已保存 ${selected.custom.provider} 的 API 密钥`, "info");
+        props.onToast(`已保存 ${selected.custom.provider} 的 API 密钥`, "success");
         props.onActiveChanged();
       } catch (err) {
         props.onToast(err instanceof Error ? err.message : String(err), "error");

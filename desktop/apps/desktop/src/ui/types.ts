@@ -66,6 +66,8 @@ export type SettingsView = {
   extraExtensions?: string[];
   providerPreset?: string;
   workspaces?: string[];
+  /** 侧栏宽度（px）；未设置时用默认 288 */
+  sidebarWidth?: number;
 };
 
 /** 模型选项：供模型选择器下拉列表使用 */
@@ -149,8 +151,8 @@ export type ExtensionUiRequest =
   | { id: string; kind: "select"; title: string; options: string[] }
   | { id: string; kind: "input"; title: string; placeholder?: string };
 
-/** Toast 通知项 */
-export type Toast = { id: number; message: string; level: "info" | "warning" | "error" };
+/** Toast 通知项（level：成功/信息/警告/错误） */
+export type Toast = { id: number; message: string; level: "success" | "info" | "warning" | "error" };
 
 /** 顶层视图切换状态 */
 export type ShellView = "chat" | "settings" | "extensions";

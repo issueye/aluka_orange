@@ -28,6 +28,18 @@ describe("workspaces helpers", () => {
     assert.equal(list.some((item) => samePath(item, a)), true);
     assert.equal(list.some((item) => samePath(item, b)), true);
     const remembered = rememberWorkspace(list, b);
-    assert.ok(samePath(remembered[0]!, b));
+    assert.ok(samePath(remembered[0]!, a));
+    assert.ok(samePath(remembered[1]!, b));
+  });
+
+  it("keeps existing workspace position and appends new ones", () => {
+    const a = path.resolve("/tmp/ws-a");
+    const b = path.resolve("/tmp/ws-b");
+    const c = path.resolve("/tmp/ws-c");
+    const list = [a, b];
+    // 已存在：保持原位，不因再次选择而提前
+    assert.deepEqual(rememberWorkspace(list, b), [a, b]);
+    // 新工作区：追加到末尾
+    assert.deepEqual(rememberWorkspace(list, c), [a, b, c]);
   });
 });
