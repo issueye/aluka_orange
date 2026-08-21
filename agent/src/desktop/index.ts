@@ -7,6 +7,7 @@ export {
   type ExtensionInventory,
   type ExtensionListItem,
   type OpenedSession,
+  type PromptImage,
   type SelectWorkspaceMode,
   type SessionHandle,
   type SkillListItem,

@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc, bridge } from "../bridge.ts";
-import { Button, SectionHead } from "../components/index.ts";
+import { Button, LoadingBlock, SectionHead, Spinner } from "../components/index.ts";
 import type { InstalledPkg, MarketRow, PromptItem, SkillItem, Toast } from "../types.ts";
 
 /** 市场分页大小（与 zeno 桌面壳一致：每页 20，触底加载下一页） */
@@ -41,6 +41,7 @@ export function ExtensionsView(props: {
 
   // ── 扩展清单（已加载扩展 / 错误） ──
   const [extSummary, setExtSummary] = useState("");
+  const [extLoading, setExtLoading] = useState(true); // 清单首次/手动刷新加载中
   const [extList, setExtList] = useState<ExtEntry[]>([]);
   const [extErrors, setExtErrors] = useState<Array<{ path: string; error: string }>>([]);
 
@@ -66,20 +67,25 @@ export function ExtensionsView(props: {
 
   /** 刷新扩展、提示词、技能列表及加载错误信息 */
   async function refreshInventories() {
-    const [inv, promptList, skillList] = await Promise.all([
-      rpc<{ extensions?: ExtEntry[]; errors?: Array<{ path: string; error: string }> }>("listExtensions"),
-      rpc<PromptItem[]>("listPrompts"),
-      rpc<SkillItem[]>("listSkills"),
-    ]);
-    setExtList(inv?.extensions ?? []);
-    setExtErrors(inv?.errors ?? []);
-    setPrompts(promptList ?? []);
-    setSkills(skillList ?? []);
-    const errCount = inv?.errors?.length ?? 0;
-    setExtSummary(
-      `扩展 ${inv?.extensions?.length ?? 0} · 提示词 ${promptList?.length ?? 0} · 技能 ${skillList?.length ?? 0}`
-      + (errCount ? ` · 错误 ${errCount}` : ""),
-    );
+    setExtLoading(true);
+    try {
+      const [inv, promptList, skillList] = await Promise.all([
+        rpc<{ extensions?: ExtEntry[]; errors?: Array<{ path: string; error: string }> }>("listExtensions"),
+        rpc<PromptItem[]>("listPrompts"),
+        rpc<SkillItem[]>("listSkills"),
+      ]);
+      setExtList(inv?.extensions ?? []);
+      setExtErrors(inv?.errors ?? []);
+      setPrompts(promptList ?? []);
+      setSkills(skillList ?? []);
+      const errCount = inv?.errors?.length ?? 0;
+      setExtSummary(
+        `扩展 ${inv?.extensions?.length ?? 0} · 提示词 ${promptList?.length ?? 0} · 技能 ${skillList?.length ?? 0}`
+          + (errCount ? ` · 错误 ${errCount}` : ""),
+      );
+    } finally {
+      setExtLoading(false);
+    }
   }
 
   /** 刷新已安装插件清单（~/.aluka/agent/npm-packages） */
@@ -303,12 +309,18 @@ export function ExtensionsView(props: {
           hint="工具：插件市场与已加载扩展；提示词：.aluka/prompts 下的 Markdown 片段，可插入输入框复用；技能：自动注入系统提示的技能文件。安装插件后可点击顶栏 ↻ 重载生效。"
         />
         <div className="ext-head-actions">
-          <span className="hint">{extSummary || "加载中…"}</span>
-          <Button variant="secondary" onClick={() => {
+          {extLoading ? (
+            <span className="hint ext-head-loading">
+              <Spinner size={12} label="加载清单中" /> 加载清单中…
+            </span>
+          ) : (
+            <span className="hint">{extSummary || "暂无数据"}</span>
+          )}
+          <Button variant="secondary" disabled={extLoading} onClick={() => {
             void refreshInventories();
             void loadInstalledPackages();
             if (tab === "tools" && toolsSubTab === "discover") void loadCatalog();
-          }}>刷新</Button>
+          }}>{extLoading ? "刷新中…" : "刷新"}</Button>
         </div>
 
         <div className="page-tabs">
@@ -382,7 +394,7 @@ export function ExtensionsView(props: {
                 </div>
                 {catalogError ? <p className="discover-error">{catalogError}</p> : null}
                 {catalogLoading && catalog.length === 0 ? (
-                  <p className="hint">正在查询插件市场…</p>
+                  <LoadingBlock text="正在查询插件市场…" />
                 ) : catalog.length === 0 ? (
                   <div className="pkg-empty">
                     <p>没有匹配的包。换个关键词试试，或打开网页市场浏览全部。</p>
@@ -423,18 +435,20 @@ export function ExtensionsView(props: {
                               disabled={marketBusy === row.name}
                               onClick={() => (row.installed ? void removeMarket(row.name) : installMarket(row.name))}
                             >
-                              {marketBusy === row.name ? "处理中…" : row.installed ? "移除" : "安装"}
+                              {marketBusy === row.name ? <><Spinner size={11} label="处理中" /> 处理中…</> : row.installed ? "移除" : "安装"}
                             </Button>
                           </li>
                         );
                       })}
                     </ul>
                     <div ref={catalogEndRef} className="pkg-sentinel hint">
-                      {catalogLoadingMore
-                        ? "加载更多…"
-                        : catalog.length < catalogTotal
-                          ? `已展示 ${catalog.length} / ${catalogTotal}`
-                          : `已加载全部 ${catalog.length} 条结果`}
+                      {catalogLoadingMore ? (
+                        <span className="pkg-sentinel-loading">
+                          <Spinner size={12} label="加载更多" /> 加载更多…
+                        </span>
+                      ) : catalog.length < catalogTotal
+                        ? `已展示 ${catalog.length} / ${catalogTotal}`
+                        : `已加载全部 ${catalog.length} 条结果`}
                     </div>
                   </>
                 )}
@@ -472,7 +486,7 @@ export function ExtensionsView(props: {
                           disabled={marketBusy === pkg.name}
                           onClick={() => void removeMarket(pkg.name)}
                         >
-                          {marketBusy === pkg.name ? "移除中…" : "移除"}
+                          {marketBusy === pkg.name ? <><Spinner size={11} label="移除中" /> 移除中…</> : "移除"}
                         </Button>
                       </li>
                     ))}
@@ -516,7 +530,7 @@ export function ExtensionsView(props: {
                 onChange={(e) => setPromptsFilter(e.target.value)}
               />
               <span className="hint discover-count">
-                {prompts === undefined ? "加载中…" : prompts.length ? `共 ${prompts.length} 个提示词` : ""}
+                {prompts === undefined ? <><Spinner size={11} label="加载中" /> 加载中…</> : prompts.length ? `共 ${prompts.length} 个提示词` : ""}
               </span>
             </div>
             {promptsFiltered.length ? (
@@ -554,7 +568,7 @@ export function ExtensionsView(props: {
                 onChange={(e) => setSkillsFilter(e.target.value)}
               />
               <span className="hint discover-count">
-                {skills === undefined ? "加载中…" : skills.length ? `共 ${skills.length} 个技能` : ""}
+                {skills === undefined ? <><Spinner size={11} label="加载中" /> 加载中…</> : skills.length ? `共 ${skills.length} 个技能` : ""}
               </span>
             </div>
             {skillsFiltered.length ? (

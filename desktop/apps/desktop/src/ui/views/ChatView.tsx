@@ -1,23 +1,26 @@
 /**
- * 对话视图：时间线 + 空态引导 + Composer（工作区选择 / 模型 / 思考深度 / 发送）。
+ * 对话视图：时间线 + 空态引导 + Composer（工作区选择 / 模型 / 思考深度 / 图片附件 / 发送）。
  *
  * 始终保持挂载（由 App 壳用 CSS 隐藏），以保留滚动位置与输入内容；
  * 模型 / 思考深度切换内部直连 RPC 并回调 setSettings 同步状态。
+ * 图片附件支持选择 / 粘贴 / 拖拽，发送时随消息一起传给 Agent。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Folder, FolderPlus } from "lucide-react";
+import { Check, Copy, Folder, FolderPlus, ImagePlus, X } from "lucide-react";
 import { rpc } from "../bridge.ts";
-import { Button, Markdown, Select, Textarea } from "../components/index.ts";
+import { Button, ImageViewer, LoadingBlock, Markdown, Select, Textarea } from "../components/index.ts";
 import { ContextRing } from "../components/ContextRing.tsx";
 import { ToolCard } from "../ToolCard.tsx";
 import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
 import type {
+  ImageAttachment,
   ModelOption,
   SessionUsageView,
   SettingsView,
   TimelineItem,
   Toast,
 } from "../types.ts";
+import { filesToAttachments, formatSize, imagesFromPaste, MAX_ATTACHMENTS } from "../lib/images.ts";
 import { formatUsage, pathsEqual } from "../lib/utils.ts";
 
 /** 思考深度选项 */
@@ -56,8 +59,12 @@ export function ChatView(props: {
   timeline: TimelineItem[];
   streaming: string;
   busy: boolean;
+  /** 会话打开中（切换会话时时间线加载占位） */
+  sessionLoading: boolean;
   prompt: string;
   setPrompt: (text: string) => void;
+  attachments: ImageAttachment[];
+  setAttachments: (next: ImageAttachment[] | ((prev: ImageAttachment[]) => ImageAttachment[])) => void;
   onSend: (e?: React.FormEvent) => void;
   settings: SettingsView;
   setSettings: (next: SettingsView | ((prev: SettingsView) => SettingsView)) => void;
@@ -73,12 +80,17 @@ export function ChatView(props: {
   onToast: (message: string, level?: Toast["level"]) => void;
 }) {
   const timelineRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { settings, setSettings } = props;
   const toast = props.onToast;
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [viewerSrc, setViewerSrc] = useState<string | undefined>();
+  const [dragOver, setDragOver] = useState(false);
+  const [attBusy, setAttBusy] = useState(false);
 
   const isEmptyChat = props.timeline.length === 0 && !props.streaming;
   const needsWorkspace = !settings.cwd;
+  const canSend = Boolean(props.prompt.trim()) || props.attachments.length > 0;
 
   /** 自动滚动时间线到底部（新消息出现时） */
   useEffect(() => {
@@ -95,6 +107,21 @@ export function ChatView(props: {
       toast("复制失败", "error");
     }
   }, [toast]);
+
+  /** 添加图片文件为附件（选择 / 粘贴 / 拖拽共用） */
+  const addImageFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return;
+    setAttBusy(true);
+    try {
+      const { added, skipped } = await filesToAttachments(files, props.attachments.length);
+      if (added.length) props.setAttachments((prev) => [...prev, ...added]);
+      for (const item of skipped) toast(`已跳过 ${item.name}：${item.reason}`, "warning");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setAttBusy(false);
+    }
+  }, [props, toast]);
 
   /** 选择模型：写回设置并同步 */
   function pickModel(next: string) {
@@ -125,9 +152,12 @@ export function ChatView(props: {
   }
 
   return (
-    <div className={`chat-pane${props.hidden ? " is-hidden" : ""}`}>
+    <div className={`chat-pane${props.hidden ? " is-hidden" : ""}${dragOver ? " is-dragover" : ""}`}>
       <div className="timeline" ref={timelineRef}>
-        {isEmptyChat ? (
+        {props.sessionLoading && props.timeline.length === 0 && !props.streaming ? (
+          <LoadingBlock text="正在加载会话…" className="timeline-loading" />
+        ) : null}
+        {isEmptyChat && !props.sessionLoading ? (
           <div className="chat-empty">
             {needsWorkspace ? (
               <>
@@ -212,7 +242,19 @@ export function ChatView(props: {
                       {isCopied ? <Check size={12} /> : <Copy size={12} />}
                     </button>
                   </div>
-                  <div className="bubble-text">{item.text}</div>
+                  {item.images?.length ? (
+                    <div className="bubble-user-images">
+                      {item.images.map((img, i) => (
+                        <img
+                          key={`${item.id}-img-${i}`}
+                          src={`data:${img.mimeType};base64,${img.data}`}
+                          alt={item.text || "用户图片"}
+                          onClick={() => setViewerSrc(`data:${img.mimeType};base64,${img.data}`)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {item.text ? <div className="bubble-text">{item.text}</div> : null}
                 </div>
                 {timeLabel ? <div className="bubble-meta">{timeLabel}</div> : null}
               </div>
@@ -237,7 +279,31 @@ export function ChatView(props: {
         ) : null}
       </div>
       <div className="composer-wrap" data-aluka-drag="no-drag">
-        <form className="composer" onSubmit={(e) => props.onSend(e)}>
+        <form
+          className="composer"
+          onSubmit={(e) => props.onSend(e)}
+          onDragOver={(e) => {
+            if (e.dataTransfer?.types?.includes("Files")) {
+              e.preventDefault();
+              setDragOver(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) setDragOver(false);
+          }}
+          onDrop={(e) => {
+            const dropped = Array.from(e.dataTransfer?.files ?? []);
+            if (!dropped.length) return;
+            e.preventDefault();
+            setDragOver(false);
+            const images = dropped.filter((f) => f.type.startsWith("image/"));
+            if (!images.length) {
+              toast("仅支持拖入图片文件", "warning");
+              return;
+            }
+            void addImageFiles(images);
+          }}
+        >
           <button
             type="button"
             className="composer-workspace"
@@ -250,12 +316,40 @@ export function ChatView(props: {
                 || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "选择工作区")}
             </span>
           </button>
+          {props.attachments.length || attBusy ? (
+            <div className="ui-attachments">
+              {props.attachments.map((att) => (
+                <div key={att.id} className="ui-attachment" title={`${att.name} · ${formatSize(att.size)}`}>
+                  <img src={att.dataUrl} alt={att.name} onClick={() => setViewerSrc(att.dataUrl)} />
+                  <button
+                    type="button"
+                    className="ui-attachment__remove"
+                    title={`移除 ${att.name}`}
+                    onClick={() => props.setAttachments((prev) => prev.filter((x) => x.id !== att.id))}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ))}
+              {attBusy ? <div className="ui-attachment ui-attachment--busy"><LoadingBlock size={14} text="" /></div> : null}
+            </div>
+          ) : null}
           <Textarea
             className="ui-textarea--composer"
             rows={3}
             value={props.prompt}
-            placeholder="给 Agent 发消息…（Enter 发送，Shift+Enter 换行）"
+            placeholder={
+              dragOver
+                ? "松开鼠标添加图片…"
+                : `给 Agent 发消息…（Enter 发送，Shift+Enter 换行，可粘贴/拖入图片）`
+            }
             onChange={props.setPrompt}
+            onPaste={(e) => {
+              const files = imagesFromPaste(e);
+              if (!files.length) return;
+              e.preventDefault();
+              void addImageFiles(files);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -277,14 +371,14 @@ export function ChatView(props: {
                 options={
                   props.modelOptions.length
                     ? props.modelOptions.map((m) => ({
-                        value: `${m.provider}/${m.id}`,
-                        label: `${m.provider}/${m.name || m.id}${m.configured ? "" : " · 缺密钥"}`,
-                      }))
+                      value: `${m.provider}/${m.id}`,
+                      label: `${m.provider}/${m.name || m.id}${m.configured ? "" : " · 缺密钥"}`,
+                    }))
                     : settings.provider && settings.model
                       ? [{
-                          value: `${settings.provider}/${settings.model}`,
-                          label: `${settings.provider}/${settings.model}`,
-                        }]
+                        value: `${settings.provider}/${settings.model}`,
+                        label: `${settings.provider}/${settings.model}`,
+                      }]
                       : []
                 }
                 onChange={pickModel}
@@ -298,6 +392,29 @@ export function ChatView(props: {
                   label: option.label,
                 }))}
                 onChange={pickThinking}
+              />
+              <button
+                type="button"
+                className="icon-btn composer-attach-btn"
+                title={props.attachments.length >= MAX_ATTACHMENTS
+                  ? `已达上限（${MAX_ATTACHMENTS} 张）`
+                  : "添加图片（也可直接粘贴 / 拖入）"}
+                disabled={props.busy || props.attachments.length >= MAX_ATTACHMENTS}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImagePlus size={15} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  void addImageFiles(files);
+                }}
               />
             </div>
             <div className="composer-actions-right">
@@ -315,7 +432,7 @@ export function ChatView(props: {
                   <span className="composer-run-btn__stop" />
                 </button>
               ) : (
-                <Button type="submit" disabled={!props.prompt.trim()}>
+                <Button type="submit" disabled={!canSend}>
                   发送
                 </Button>
               )}
@@ -330,6 +447,8 @@ export function ChatView(props: {
           />
         </div>
       </div>
+
+      {viewerSrc ? <ImageViewer src={viewerSrc} onClose={() => setViewerSrc(undefined)} /> : null}
     </div>
   );
 }

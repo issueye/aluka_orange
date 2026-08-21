@@ -111,12 +111,37 @@ export type DesktopRuntimeEvent =
   | { type: "agent_start"; sessionId: string }
   | { type: "agent_end"; sessionId: string; usage?: SessionUsageTotals }
   | { type: "text_delta"; sessionId: string; text: string }
-  | { type: "message_end"; sessionId: string; role: string; text: string; usage?: Usage }
+  | {
+      type: "message_end";
+      sessionId: string;
+      role: string;
+      text: string;
+      usage?: Usage;
+      /** 用户消息携带的图片附件（base64 + MIME），供 UI 渲染 */
+      images?: PromptImage[];
+    }
   | { type: "tool_start"; sessionId: string; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_end"; sessionId: string; toolCallId: string; toolName: string; isError: boolean; resultText: string }
   | { type: "error"; sessionId: string; message: string }
   | { type: "extension_ui"; request: ExtensionUiRequest }
   | { type: "usage"; sessionId: string; usage: SessionUsageView };
+
+/** 用户输入携带的图片附件（Base64 数据 + MIME 类型） */
+export interface PromptImage {
+  data: string;
+  mimeType: string;
+}
+
+/** 从消息内容块中提取图片附件 */
+function imagesFrom(message: AgentMessage): PromptImage[] | undefined {
+  const parts = message.role === "user" || message.role === "assistant" || message.role === "custom"
+    ? message.content
+    : [];
+  const images = parts.filter(
+    (part): part is { type: "image"; data: string; mimeType: string } => part.type === "image",
+  );
+  return images.length ? images.map((part) => ({ data: part.data, mimeType: part.mimeType })) : undefined;
+}
 
 export type DesktopEventSink = (event: DesktopRuntimeEvent) => void | Promise<void>;
 
@@ -135,6 +160,8 @@ export interface TimelineItem {
   id: string;
   role: "user" | "assistant" | "tool" | "system";
   text: string;
+  /** 用户消息携带的图片附件（base64 + MIME） */
+  images?: PromptImage[];
   toolName?: string;
   timestamp: number;
   toolCallId?: string;
@@ -212,7 +239,8 @@ export interface DesktopRuntime {
   getActiveSessionId(): string | undefined;
   getTimeline(): TimelineItem[];
   isBusy(): boolean;
-  prompt(text: string): Promise<void>;
+  /** 发送 Prompt（可附带图片附件，随用户消息进入上下文并持久化） */
+  prompt(text: string, images?: PromptImage[]): Promise<void>;
   abort(): void;
   /** 退出前中止请求并杀掉跟踪的子进程 */
   dispose(): void;
@@ -300,6 +328,7 @@ function projectEvent(sessionId: string, event: AgentEvent): DesktopRuntimeEvent
           sessionId,
           role: event.message.role,
           text: textFrom(event.message),
+          images: event.message.role === "user" ? imagesFrom(event.message) : undefined,
           usage,
         };
       }
@@ -401,10 +430,15 @@ function timelineFromHistory(messages: AgentMessage[]): TimelineItem[] {
       message.role === "user" && "timestamp" in message && typeof (message as { timestamp?: number }).timestamp === "number"
         ? (message as { timestamp: number }).timestamp
         : Date.now();
+    const text = textFrom(message);
+    const images = message.role === "user" ? imagesFrom(message) : undefined;
+    // 纯图片消息（无文字）也要展示
+    if (!text.trim() && !images?.length) return;
     items.push({
       id: `${role}-${index}`,
       role,
-      text: textFrom(message),
+      text,
+      images,
       timestamp: ts,
     });
   });
@@ -1063,9 +1097,12 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         timeline: timelineFromHistory(history),
       };
     },
-    async prompt(text) {
+    async prompt(text, images) {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      const imageBlocks = (images ?? [])
+        .filter((img) => typeof img?.data === "string" && img.data.trim() && typeof img?.mimeType === "string")
+        .map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+      if (!trimmed && imageBlocks.length === 0) return;
       ensurePersistedSession();
       if (activeRuns.has(session.id)) {
         throw new Error("该会话正在处理中；可切换到其他会话继续工作");
@@ -1100,18 +1137,21 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         }
         const promptText = input?.action === "transform" ? input.text : trimmed;
 
-        activeSession.append({ type: "user", role: "user", text: promptText });
+        const user: AgentMessage = {
+          role: "user",
+          content: [
+            ...(promptText ? [{ type: "text" as const, text: promptText }] : []),
+            ...imageBlocks,
+          ],
+          timestamp: Date.now(),
+        };
+        activeSession.append({ type: "message", message: user });
         const before = await runner.emitBeforeAgentStart(promptText, systemPrompt);
         if (before?.systemPrompt) {
           systemPrompt = before.systemPrompt;
           runner.setSystemPrompt(systemPrompt);
         }
 
-        const user: AgentMessage = {
-          role: "user",
-          content: [{ type: "text", text: promptText }],
-          timestamp: Date.now(),
-        };
         activeHistory.push(user);
 
         const produced = await runAgentLoop(

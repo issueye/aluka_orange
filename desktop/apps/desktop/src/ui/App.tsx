@@ -12,11 +12,12 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { bridge, rpc } from "./bridge.ts";
+import { Logo } from "./Logo.tsx";
 import { WorkspaceSidebar, type WorkspaceItem } from "./WorkspaceSidebar.tsx";
 import { ChatView } from "./views/ChatView.tsx";
 import { SettingsView } from "./views/SettingsView.tsx";
 import { ExtensionsView } from "./views/ExtensionsView.tsx";
-import { Button, Input } from "./components/index.ts";
+import { Button, ConfirmDialog, Dialog, Input, Spinner } from "./components/index.ts";
 import {
   ExtensionUiModal,
   type ExtensionUiResponse,
@@ -24,12 +25,14 @@ import {
 import type {
   ChooseWorkspaceResult,
   ExtensionUiRequest,
+  ImageAttachment,
   ModelOption,
   OpenedSession,
   SessionSummary,
   SessionUsageView,
   SettingsView as SettingsState,
   ShellView,
+  TimelineImage,
   TimelineItem,
   Toast,
 } from "./types.ts";
@@ -42,6 +45,9 @@ import {
 } from "./lib/utils.ts";
 import "./components/ui.css";
 import "./styles.css";
+
+/** 启动闪屏最短展示时长（数据就绪后再补足该时长，避免闪屏一闪而过） */
+const MIN_SPLASH_MS = 1600;
 
 /**
  * Aluka Desktop 主应用组件（壳）
@@ -64,6 +70,9 @@ export function App() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]); // 当前会话时间线
   const [busy, setBusy] = useState(false); // 是否正在处理请求
   const [prompt, setPrompt] = useState(""); // 输入框内容
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]); // 待发送图片附件
+  const [sessionLoading, setSessionLoading] = useState(false); // 会话打开中（时间线加载占位）
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; cwd: string; title: string } | undefined>(); // 删除会话确认
   const [streaming, setStreaming] = useState(""); // 正在流式输出的文本
   const [settings, setSettings] = useState<SettingsState>({}); // 用户设置
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]); // 可用模型列表
@@ -91,6 +100,11 @@ export function App() {
       return false;
     }
   });
+  /** 启动闪屏：splash 控制是否还挂在界面上，booted 触发淡出过渡并进入主界面 */
+  const [splash, setSplash] = useState(true);
+  const [booted, setBooted] = useState(false);
+  /** 闪屏上的分阶段状态文案（连接运行时 → 加载数据） */
+  const [splashStatus, setSplashStatus] = useState("正在启动本地运行时…");
 
   // 当前主题（默认深色）
   const theme = settings.theme === "light" ? "light" : "dark";
@@ -170,53 +184,59 @@ export function App() {
    */
   const applyOpened = useCallback(
     async (opened: OpenedSession) => {
-      const leftover = streamingRef.current.trim();
-      if (leftover) {
-        const prevKey = sessionKey(
-          sessionRef.current.cwd,
-          sessionRef.current.id,
-        );
-        if (prevKey) {
-          const prev = timelineCache.current[prevKey] ?? [];
-          const last = prev[prev.length - 1];
-          if (!(last?.role === "assistant" && last.text === leftover)) {
-            timelineCache.current[prevKey] = [
-              ...prev,
-              {
-                id: `a-${Date.now()}-park`,
-                role: "assistant",
-                text: leftover,
-                timestamp: Date.now(),
-              },
-            ];
+      setSessionLoading(true);
+      try {
+        const leftover = streamingRef.current.trim();
+        if (leftover) {
+          const prevKey = sessionKey(
+            sessionRef.current.cwd,
+            sessionRef.current.id,
+          );
+          if (prevKey) {
+            const prev = timelineCache.current[prevKey] ?? [];
+            const last = prev[prev.length - 1];
+            if (!(last?.role === "assistant" && last.text === leftover)) {
+              timelineCache.current[prevKey] = [
+                ...prev,
+                {
+                  id: `a-${Date.now()}-park`,
+                  role: "assistant",
+                  text: leftover,
+                  timestamp: Date.now(),
+                },
+              ];
+            }
           }
         }
+        setAttachments([]);
+        setActiveId(opened.id || undefined);
+        const s = await rpc<SettingsState>("getSettings");
+        setSettings({ ...s, cwd: opened.cwd });
+        sessionRef.current = { cwd: opened.cwd, id: opened.id || undefined };
+        const next = preferTimeline(
+          await fetchHostTimeline(opened.cwd, opened.id),
+          preferTimeline(
+            opened.timeline ?? [],
+            timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? [],
+          ),
+        );
+        rememberTimeline(opened.cwd, opened.id, next);
+        setTimeline(next);
+        streamingRef.current = "";
+        setStreaming("");
+        setView("chat");
+        // 同步目标会话的忙碌状态（切回后台仍在运行会话时保持 composer 禁用）
+        try {
+          const busyState = await rpc<{ busy?: boolean }>("isBusy");
+          setBusy(Boolean(busyState?.busy));
+        } catch {
+          setBusy(false);
+        }
+        await refreshSessions();
+        await refreshUsage(opened.id);
+      } finally {
+        setSessionLoading(false);
       }
-      setActiveId(opened.id || undefined);
-      const s = await rpc<SettingsState>("getSettings");
-      setSettings({ ...s, cwd: opened.cwd });
-      sessionRef.current = { cwd: opened.cwd, id: opened.id || undefined };
-      const next = preferTimeline(
-        await fetchHostTimeline(opened.cwd, opened.id),
-        preferTimeline(
-          opened.timeline ?? [],
-          timelineCache.current[sessionKey(opened.cwd, opened.id)] ?? [],
-        ),
-      );
-      rememberTimeline(opened.cwd, opened.id, next);
-      setTimeline(next);
-      streamingRef.current = "";
-      setStreaming("");
-      setView("chat");
-      // 同步目标会话的忙碌状态（切回后台仍在运行会话时保持 composer 禁用）
-      try {
-        const busyState = await rpc<{ busy?: boolean }>("isBusy");
-        setBusy(Boolean(busyState?.busy));
-      } catch {
-        setBusy(false);
-      }
-      await refreshSessions();
-      await refreshUsage(opened.id);
     },
     [fetchHostTimeline, rememberTimeline, refreshSessions, refreshUsage],
   );
@@ -257,21 +277,40 @@ export function App() {
     [applyOpened],
   );
 
+  /** 删除会话（破坏性操作，先弹确认框） */
   const deleteSession = useCallback(
     async (id: string, cwd: string) => {
-      try {
-        const opened = await rpc<OpenedSession>("deleteSession", { id, cwd });
-        if (id === activeId && pathsEqual(cwd, settings.cwd ?? "")) {
-          await applyOpened(opened);
-        } else {
-          await refreshSessions();
+      const title = (() => {
+        for (const ws of workspaces) {
+          if (!pathsEqual(ws.path, cwd)) continue;
+          const s = ws.sessions.find((x) => x.id === id);
+          if (s) return s.title || s.id;
         }
-      } catch (err) {
-        toast(err instanceof Error ? err.message : String(err), "error");
-      }
+        const s = sessions.find((x) => x.id === id);
+        return (s && (s.title || s.id)) || id;
+      })();
+      setDeleteConfirm({ id, cwd, title });
     },
-    [activeId, applyOpened, refreshSessions, settings.cwd, toast],
+    [sessions, workspaces],
   );
+
+  /** 确认删除后真正执行 */
+  const confirmDeleteSession = useCallback(async () => {
+    const target = deleteConfirm;
+    if (!target) return;
+    setDeleteConfirm(undefined);
+    try {
+      const opened = await rpc<OpenedSession>("deleteSession", { id: target.id, cwd: target.cwd });
+      if (target.id === activeId && pathsEqual(target.cwd, settings.cwd ?? "")) {
+        await applyOpened(opened);
+      } else {
+        await refreshSessions();
+      }
+      toast("会话已删除", "info");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
+    }
+  }, [activeId, applyOpened, deleteConfirm, refreshSessions, settings.cwd, toast]);
 
   /** 手动热重载扩展（全局 header 按钮）：重扫扩展目录 + 重建工具，并刷新相关状态 */
   const reloadExtensions = useCallback(async () => {
@@ -325,7 +364,14 @@ export function App() {
   const revealFolder = useCallback(
     async (dir: string) => {
       try {
-        await rpc("revealFolder", { path: dir });
+        // 兜底：若主进程未注册该方法（如运行的是旧实例），rpc 会永久挂起，超时后给出可见提示
+        console.log('reveal folder', dir);
+        await Promise.race([
+          rpc("revealFolder", { path: dir }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("打开文件夹请求超时，请重启应用后重试")), 3000),
+          ),
+        ]);
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), "error");
       }
@@ -401,10 +447,24 @@ export function App() {
    */
   useEffect(() => {
     let cancelled = false;
+    const splashStartedAt = Date.now();
+    /** React 闪屏挂载后即可移除 index.html 里的静态启动屏（避免双重叠加） */
+    document.getElementById("boot-splash")?.remove();
+    /** 数据加载完成（成功或失败）后：至少展示闪屏 MIN_SPLASH_MS，再淡出进入主界面 */
+    const finishSplash = () => {
+      if (cancelled) return;
+      const remain = Math.max(0, MIN_SPLASH_MS - (Date.now() - splashStartedAt));
+      window.setTimeout(() => {
+        if (cancelled) return;
+        setBooted(true); // 触发闪屏淡出过渡
+        window.setTimeout(() => setSplash(false), 420); // 过渡结束后卸载
+      }, remain);
+    };
     void (async () => {
       try {
         const info = await waitHostRuntime();
         if (cancelled) return;
+        setSplashStatus("加载会话与设置…");
         const idle = `v${info.productVersion} · 阶段 ${info.phase} · ${info.platform}`;
         setIdleStatus(idle);
         setStatus(idle);
@@ -432,6 +492,7 @@ export function App() {
         setStatus(err instanceof Error ? err.message : String(err));
         toast(String(err), "error");
       }
+      finishSplash();
     })();
     return () => {
       cancelled = true;
@@ -489,6 +550,7 @@ export function App() {
         message?: string;
         request?: ExtensionUiRequest;
         usage?: SessionUsageView;
+        images?: TimelineImage[];
       };
       if (!event || typeof event !== "object") return;
       const sid = event.sessionId;
@@ -542,12 +604,14 @@ export function App() {
         event.role === "user" &&
         event.text != null
       ) {
+        const images = event.images;
         commitTimeline((prev) => [
           ...prev,
           {
             id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             role: "user",
             text: event.text!,
+            images,
             timestamp: Date.now(),
           },
         ]);
@@ -808,17 +872,26 @@ export function App() {
   async function onSend(e?: React.FormEvent) {
     e?.preventDefault();
     const text = prompt.trim();
-    if (!text || busy) return;
+    const pending = attachments;
+    // 纯图片（无文字）也允许发送
+    if ((!text && pending.length === 0) || busy) return;
     try {
       if (!sessionRef.current.id) {
         await createNewChat();
       }
       setPrompt("");
+      setAttachments([]);
       setBusy(true);
-      await rpc("sendPrompt", { text });
+      await rpc("sendPrompt", {
+        text,
+        images: pending.map((a) => ({ data: a.base64, mimeType: a.mimeType })),
+      });
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), "error");
       setBusy(false);
+      // 发送失败时还原输入内容，避免用户丢失草稿
+      setPrompt((prev) => (prev ? (text ? `${text}\n${prev}` : prev) : text));
+      setAttachments(pending);
     }
   }
 
@@ -834,7 +907,7 @@ export function App() {
       >
         {sidebarCollapsed ? (
           <div className="sidebar-rail" data-aluka-drag>
-            <button
+            {/* <button
               type="button"
               className="icon-btn"
               data-aluka-drag="no-drag"
@@ -842,7 +915,8 @@ export function App() {
               onClick={() => void createNewChat()}
             >
               <SquarePen size={16} />
-            </button>
+            </button> */}
+            <Logo size={22} />
           </div>
         ) : (
           <WorkspaceSidebar
@@ -971,8 +1045,11 @@ export function App() {
           timeline={timeline}
           streaming={streaming}
           busy={busy}
+          sessionLoading={sessionLoading}
           prompt={prompt}
           setPrompt={setPrompt}
+          attachments={attachments}
+          setAttachments={setAttachments}
           onSend={onSend}
           settings={settings}
           setSettings={setSettings}
@@ -1030,24 +1107,14 @@ export function App() {
         ))}
       </div>
 
-      <div
-        className={`modal ${modal || wsPathOpen ? "" : "hidden"}`}
-        data-aluka-drag="no-drag"
-      >
-        {wsPathOpen ? (
-          <div className="modal-card">
-            <h3>打开工作区</h3>
-            <p className="modal-body">
-              输入文件夹路径。未选择时，新对话会使用自动生成的临时目录。
-            </p>
-            <Input
-              className="modal-input"
-              label="文件夹路径"
-              placeholder="E:\code\my-project"
-              value={wsPathDraft}
-              onChange={setWsPathDraft}
-            />
-            <div className="modal-actions">
+      {wsPathOpen ? (
+        <Dialog
+          open
+          title="打开工作区"
+          size="md"
+          onClose={() => setWsPathOpen(false)}
+          footer={
+            <>
               <Button variant="secondary" onClick={() => setWsPathOpen(false)}>
                 取消
               </Button>
@@ -1061,19 +1128,52 @@ export function App() {
               >
                 打开
               </Button>
-            </div>
-          </div>
-        ) : modal && modal.kind !== "notify" ? (
-          <ExtensionUiModal
-            request={modal}
-            selectChoice={selectChoice}
-            setSelectChoice={setSelectChoice}
-            inputDraft={modalInput}
-            setInputDraft={setModalInput}
-            onRespond={(response) => void respondUi(response)}
+            </>
+          }
+        >
+          <p className="ui-dialog__message">
+            输入文件夹路径。未选择时，新对话会使用自动生成的临时目录。
+          </p>
+          <Input
+            label="文件夹路径"
+            placeholder="E:\code\my-project"
+            value={wsPathDraft}
+            onChange={setWsPathDraft}
           />
-        ) : null}
-      </div>
+        </Dialog>
+      ) : modal && modal.kind !== "notify" ? (
+        <ExtensionUiModal
+          request={modal}
+          selectChoice={selectChoice}
+          setSelectChoice={setSelectChoice}
+          inputDraft={modalInput}
+          setInputDraft={setModalInput}
+          onRespond={(response) => void respondUi(response)}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={Boolean(deleteConfirm)}
+        title="删除会话"
+        variant="danger"
+        confirmText="删除"
+        message={`确定删除会话「${deleteConfirm?.title ?? ""}」？\n会话记录文件将被删除，此操作不可恢复。`}
+        onCancel={() => setDeleteConfirm(undefined)}
+        onConfirm={() => void confirmDeleteSession()}
+      />
+
+      {splash ? (
+        <div className={`splash${booted ? " splash--exit" : ""}`} data-aluka-drag>
+          <div className="splash-logo"><Logo size={96} /></div>
+          <div className="splash-title">Aluka</div>
+          <div className="splash-sub">橙光剖面 · 本地编码助手</div>
+          <div className="splash-loader"><span /></div>
+          <div className="splash-status">
+            {booted ? null : <Spinner size={13} label={splashStatus} />}
+            <span>{booted ? "即将进入" : splashStatus}</span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

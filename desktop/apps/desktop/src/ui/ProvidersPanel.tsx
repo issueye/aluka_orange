@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { rpc } from "./bridge.ts";
-import { Button, Field, Input, Select } from "./components/index.ts";
+import { Button, ConfirmDialog, Dialog, Field, Input, Select } from "./components/index.ts";
 
 /**
  * ProvidersPanel - 供应商管理面板
@@ -202,6 +202,10 @@ export function ProvidersPanel(props: {
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [modelDialog, setModelDialog] = useState<"add" | "edit" | undefined>();
   const [builtinKeyDialog, setBuiltinKeyDialog] = useState<BuiltinProviderView | undefined>(); // 内置厂商启用弹窗
+  /** 删除确认（供应商 / 单个模型），确认后由 executeRemovePending 执行 */
+  const [removePending, setRemovePending] = useState<
+    { kind: "provider"; provider: string } | { kind: "model"; provider: string; modelId: string } | undefined
+  >();
   const [keyDraft, setKeyDraft] = useState("");           // API 密钥输入草稿
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT); // 表单草稿
   const [fetchPicker, setFetchPicker] = useState<FetchPicker | undefined>();
@@ -619,30 +623,35 @@ export function ProvidersPanel(props: {
     }
   }
 
-  /** 删除指定供应商及其全部模型 */
-  async function removeProvider(provider: string) {
-    if (!confirm(`确定删除供应商「${provider}」及其全部模型？`)) return;
-    setBusy(true);
-    try {
-      const next = await rpc<ModelsJsonConfigView>("removeCustomProvider", { provider });
-      setConfig(next);
-      props.onToast(`已删除 ${provider}`, "info");
-      props.onActiveChanged();
-    } catch (err) {
-      props.onToast(err instanceof Error ? err.message : String(err), "error");
-    } finally {
-      setBusy(false);
-    }
+  /** 删除指定供应商及其全部模型（弹确认框后执行） */
+  function removeProvider(provider: string) {
+    setRemovePending({ kind: "provider", provider });
   }
 
-  /** 删除指定模型 */
-  async function removeModel(provider: string, modelId: string) {
-    if (!confirm(`确定删除模型 ${provider}/${modelId}？`)) return;
+  /** 删除指定模型（弹确认框后执行） */
+  function removeModel(provider: string, modelId: string) {
+    setRemovePending({ kind: "model", provider, modelId });
+  }
+
+  /** 确认删除后真正执行（供应商或单个模型） */
+  async function executeRemovePending() {
+    const target = removePending;
+    if (!target) return;
+    setRemovePending(undefined);
     setBusy(true);
     try {
-      const next = await rpc<ModelsJsonConfigView>("removeCustomModel", { provider, modelId });
-      setConfig(next);
-      props.onToast(`已删除 ${provider}/${modelId}`, "info");
+      if (target.kind === "provider") {
+        const next = await rpc<ModelsJsonConfigView>("removeCustomProvider", { provider: target.provider });
+        setConfig(next);
+        props.onToast(`已删除 ${target.provider}`, "info");
+      } else {
+        const next = await rpc<ModelsJsonConfigView>("removeCustomModel", {
+          provider: target.provider,
+          modelId: target.modelId,
+        });
+        setConfig(next);
+        props.onToast(`已删除 ${target.provider}/${target.modelId}`, "info");
+      }
       props.onActiveChanged();
     } catch (err) {
       props.onToast(err instanceof Error ? err.message : String(err), "error");
@@ -1025,9 +1034,8 @@ export function ProvidersPanel(props: {
       </div>
 
       {providerDialogOpen ? (
-        <div className="modal" data-aluka-drag="no-drag">
-          <form className="modal-card" onSubmit={(e) => void saveProvider(e)}>
-            <h3>添加供应商</h3>
+        <Dialog open size="md" title="添加供应商">
+          <form className="ui-dialog__form" onSubmit={(e) => void saveProvider(e)}>
             <Input
               label="供应商 ID"
               hint="用于标识供应商，建议小写英文，如 openai、ollama。"
@@ -1078,7 +1086,7 @@ export function ProvidersPanel(props: {
               onChange={(apiKey) => setDraft((d) => ({ ...d, apiKey }))}
               placeholder="可选，稍后也可单独设置"
             />
-            <div className="modal-actions">
+            <div className="ui-dialog__footer">
               <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
                 <CloudDownload size={14} /> 从接口拉取
               </Button>
@@ -1088,17 +1096,18 @@ export function ProvidersPanel(props: {
               <Button type="submit" disabled={busy}>保存</Button>
             </div>
           </form>
-        </div>
+        </Dialog>
       ) : null}
 
       {modelDialog ? (
-        <div className="modal" data-aluka-drag="no-drag">
-          <form className="modal-card" onSubmit={(e) => void saveModel(e)}>
-            <h3>
-              {modelDialog === "edit"
-                ? `编辑模型 · ${draft.provider}`
-                : `添加模型 · ${draft.provider}`}
-            </h3>
+        <Dialog
+          open
+          size="md"
+          title={modelDialog === "edit"
+            ? `编辑模型 · ${draft.provider}`
+            : `添加模型 · ${draft.provider}`}
+        >
+          <form className="ui-dialog__form" onSubmit={(e) => void saveModel(e)}>
             <Input
               label="模型 ID"
               hint="请求时发送的 model 字段。"
@@ -1122,7 +1131,7 @@ export function ProvidersPanel(props: {
               onChange={(contextWindow) => setDraft((d) => ({ ...d, contextWindow }))}
               placeholder="128K"
             />
-            <div className="modal-actions">
+            <div className="ui-dialog__footer">
               {modelDialog === "add" ? (
                 <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
                   <CloudDownload size={14} /> 从接口拉取
@@ -1134,91 +1143,87 @@ export function ProvidersPanel(props: {
               <Button type="submit" disabled={busy}>保存</Button>
             </div>
           </form>
-        </div>
+        </Dialog>
       ) : null}
 
       {fetchPicker ? (
-        <div className="modal" data-aluka-drag="no-drag">
-          <div className="modal-card model-pick-card">
-            <h3>选择要导入的模型</h3>
-            <p className="modal-body">
-              来自 OpenAI 兼容 GET /models，已存在的会标为已添加。
-              显示 {visibleRemoteModels(fetchPicker).length} / 共 {fetchPicker.models.length} 个。
-            </p>
-            <Input
-              label="筛选"
-              value={fetchPicker.query}
-              onChange={(query) => setFetchPicker((p) => (p ? { ...p, query } : p))}
-              placeholder="muse-spark、glm、deepseek"
-            />
-            <div className="model-pick-toolbar">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  const visible = visibleRemoteModels(fetchPicker);
-                  setFetchPicker((p) => p ? { ...p, selected: uniqueIds([...p.selected, ...visible.map((m) => m.id)]) } : p);
-                }}
-              >
-                全选可见
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setFetchPicker((p) => p ? { ...p, selected: [] } : p)}>
-                清空
-              </Button>
-            </div>
-            <ul className="model-pick-list">
-              {visibleRemoteModels(fetchPicker).length === 0 ? (
-                <li className="model-pick-empty">
-                  {fetchPicker.models.length === 0
-                    ? "未拉取到模型"
-                    : `没有匹配「${fetchPicker.query}」的模型`}
-                </li>
-              ) : visibleRemoteModels(fetchPicker).map((model) => {
-                const exists = fetchPicker.existing.includes(model.id);
-                const checked = exists || fetchPicker.selected.includes(model.id);
-                return (
-                  <li key={model.id}>
-                    <label className={exists ? "is-existing" : ""}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={exists || busy}
-                        onChange={() => {
-                          setFetchPicker((p) => {
-                            if (!p) return p;
-                            const on = p.selected.includes(model.id);
-                            return {
-                              ...p,
-                              selected: on ? p.selected.filter((id) => id !== model.id) : [...p.selected, model.id],
-                            };
-                          });
-                        }}
-                      />
-                      <span>
-                        {model.id}
-                        {model.ownedBy ? <span className="hint"> · {model.ownedBy}</span> : null}
-                        {exists ? <span className="auth-badge ok">已添加</span> : null}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="modal-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => setFetchPicker(undefined)}>取消</Button>
-              <Button disabled={busy} onClick={() => void importFetchedModels()}>
-                导入选中
-              </Button>
-            </div>
+        <Dialog open size="lg" title="选择要导入的模型" cardClassName="model-pick-card">
+          <p className="ui-dialog__message">
+            来自 OpenAI 兼容 GET /models，已存在的会标为已添加。
+            显示 {visibleRemoteModels(fetchPicker).length} / 共 {fetchPicker.models.length} 个。
+          </p>
+          <Input
+            label="筛选"
+            value={fetchPicker.query}
+            onChange={(query) => setFetchPicker((p) => (p ? { ...p, query } : p))}
+            placeholder="muse-spark、glm、deepseek"
+          />
+          <div className="model-pick-toolbar">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const visible = visibleRemoteModels(fetchPicker);
+                setFetchPicker((p) => p ? { ...p, selected: uniqueIds([...p.selected, ...visible.map((m) => m.id)]) } : p);
+              }}
+            >
+              全选可见
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setFetchPicker((p) => p ? { ...p, selected: [] } : p)}>
+              清空
+            </Button>
           </div>
-        </div>
+          <ul className="model-pick-list">
+            {visibleRemoteModels(fetchPicker).length === 0 ? (
+              <li className="model-pick-empty">
+                {fetchPicker.models.length === 0
+                  ? "未拉取到模型"
+                  : `没有匹配「${fetchPicker.query}」的模型`}
+              </li>
+            ) : visibleRemoteModels(fetchPicker).map((model) => {
+              const exists = fetchPicker.existing.includes(model.id);
+              const checked = exists || fetchPicker.selected.includes(model.id);
+              return (
+                <li key={model.id}>
+                  <label className={exists ? "is-existing" : ""}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={exists || busy}
+                      onChange={() => {
+                        setFetchPicker((p) => {
+                          if (!p) return p;
+                          const on = p.selected.includes(model.id);
+                          return {
+                            ...p,
+                            selected: on ? p.selected.filter((id) => id !== model.id) : [...p.selected, model.id],
+                          };
+                        });
+                      }}
+                    />
+                    <span>
+                      {model.id}
+                      {model.ownedBy ? <span className="hint"> · {model.ownedBy}</span> : null}
+                      {exists ? <span className="auth-badge ok">已添加</span> : null}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="ui-dialog__footer">
+            <Button variant="secondary" disabled={busy} onClick={() => setFetchPicker(undefined)}>取消</Button>
+            <Button disabled={busy} onClick={() => void importFetchedModels()}>
+              导入选中
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
 
       {builtinKeyDialog ? (
-        <div className="modal" data-aluka-drag="no-drag">
-          <form className="modal-card" onSubmit={(e) => void enableBuiltin(builtinKeyDialog, keyDraft, e)}>
-            <h3>{builtinKeyDialog.name} · API 密钥</h3>
-            <p className="modal-body hint">
+        <Dialog open size="md" title={`${builtinKeyDialog.name} · API 密钥`}>
+          <form className="ui-dialog__form" onSubmit={(e) => void enableBuiltin(builtinKeyDialog, keyDraft, e)}>
+            <p className="ui-dialog__message hint">
               {config?.providers.some((p) => p.provider === builtinKeyDialog.id)
                 ? "仅更新密钥，不影响已配置的模型。"
                 : `保存后将把内置目录的 ${builtinKeyDialog.models.length} 个模型写入 models.json。`}
@@ -1235,13 +1240,29 @@ export function ProvidersPanel(props: {
               onChange={setKeyDraft}
               placeholder="sk-…（可留空，稍后在自定义列表中设置）"
             />
-            <div className="modal-actions">
+            <div className="ui-dialog__footer">
               <Button variant="secondary" disabled={busy} onClick={() => setBuiltinKeyDialog(undefined)}>取消</Button>
               <Button type="submit" disabled={busy}>保存</Button>
             </div>
           </form>
-        </div>
+        </Dialog>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(removePending)}
+        title={removePending?.kind === "provider" ? "删除供应商" : "删除模型"}
+        variant="danger"
+        confirmText="删除"
+        message={
+          removePending?.kind === "provider"
+            ? `确定删除供应商「${removePending.provider}」及其全部模型？`
+            : removePending
+              ? `确定删除模型 ${removePending.provider}/${removePending.modelId}？`
+              : ""
+        }
+        onCancel={() => setRemovePending(undefined)}
+        onConfirm={() => void executeRemovePending()}
+      />
     </div>
   );
 }

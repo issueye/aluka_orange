@@ -15,6 +15,7 @@ import {
   type DesktopRuntime,
   type DesktopRuntimeEvent,
   type DesktopSettings,
+  type PromptImage,
   type ExtensionUiResponse,
   type ModelsJsonPreview,
   type ModelsJsonConfigView,
@@ -85,8 +86,8 @@ export interface DesktopHost {
   getActiveSessionId(): string | undefined;
   /** 是否正在处理 Prompt */
   isBusy(): boolean;
-  /** 发送 Prompt 到 Agent（异步执行，结果通过事件推送） */
-  sendPrompt(text: string): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** 发送 Prompt 到 Agent（可附带图片附件；异步执行，结果通过事件推送） */
+  sendPrompt(text: string, images?: PromptImage[]): Promise<{ ok: true } | { ok: false; error: string }>;
   /** 中止当前正在进行的 Prompt */
   abortPrompt(): { ok: true };
   /** 退出前中止任务并清理子进程 */
@@ -232,9 +233,9 @@ export async function createDesktopHost(opts: {
     getTimeline: () => ({ items: runtime.getTimeline() }),
     getActiveSessionId: () => runtime.getActiveSessionId(),
     isBusy: () => runtime.isBusy(),
-    async sendPrompt(text) {
+    async sendPrompt(text, images) {
       try {
-        await runtime.prompt(text);
+        await runtime.prompt(text, images);
         return { ok: true as const };
       } catch (error) {
         return { ok: false as const, error: error instanceof Error ? error.message : String(error) };

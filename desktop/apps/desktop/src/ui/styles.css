@@ -730,7 +730,6 @@ select {
 
 .sidebar-foot {
   padding: 10px;
-  border-top: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -752,6 +751,7 @@ select {
 }
 
 .sidebar-rail {
+  height: var(--titlebar-h);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2030,6 +2030,7 @@ select {
   margin-top: 3px;
 }
 
+.ui-dialog__body .ui-field,
 .modal-card .ui-field {
   color: var(--muted-foreground);
 }
@@ -2739,46 +2740,7 @@ select {
   border-color: var(--warning);
 }
 
-.modal {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  animation: ui-fade-in var(--duration-med) var(--ease-out);
-}
-
-.modal.hidden {
-  display: none;
-}
-
-.modal-card {
-  width: min(420px, calc(100vw - 32px));
-  background: var(--surface-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: var(--shadow-soft);
-  animation: ui-pop-in var(--duration-slow) var(--ease-out);
-}
-
-.modal-card h3 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.modal-body {
-  margin: 0;
-  color: var(--muted-foreground);
-  white-space: pre-wrap;
-  font-size: 13px;
-}
-
+/* 旧弹窗样式已由 ui.css 中的 .ui-dialog 体系替代；.modal-options 保留给扩展 select 弹窗 */
 .modal-options {
   display: flex;
   flex-direction: column;
@@ -2793,25 +2755,6 @@ select {
   background: var(--surface-muted);
   color: var(--foreground);
   cursor: pointer;
-}
-
-.modal-options.hidden,
-.modal-input.hidden {
-  display: none;
-}
-
-.modal-input {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--background);
-  color: var(--foreground);
-  padding: 10px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .hidden {
@@ -2871,9 +2814,7 @@ select {
   .settings-page-shell,
   .settings-page-inner,
   .inv-list li,
-  .toast,
-  .modal,
-  .modal-card {
+  .toast {
     animation: none;
   }
 
@@ -3226,4 +3167,168 @@ select {
     flex: 0 0 40%;
     max-width: 40%;
   }
+}
+
+/* ===== 启动闪屏 ===== */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background:
+    radial-gradient(90% 120% at 50% 0%, color-mix(in srgb, #ff8a2a 13%, transparent) 0%, transparent 60%),
+    var(--background);
+  color: var(--foreground);
+  transition:
+    opacity var(--duration-slow) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out),
+    filter var(--duration-slow) var(--ease-out),
+    visibility var(--duration-slow);
+}
+
+.splash--exit {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(1.025);
+  filter: blur(6px);
+}
+
+.splash-logo {
+  animation: splash-breathe 2.2s ease-in-out infinite, splash-enter 0.5s var(--ease-out);
+  filter: drop-shadow(0 8px 24px rgb(232 89 12 / 0.28));
+}
+
+@keyframes splash-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+
+@keyframes splash-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.splash-title {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  animation: splash-enter 0.5s var(--ease-out) 0.05s backwards;
+}
+
+.splash-sub {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  letter-spacing: 0.02em;
+  animation: splash-enter 0.5s var(--ease-out) 0.1s backwards;
+}
+
+.splash-loader {
+  margin-top: 14px;
+  width: 132px;
+  height: 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  overflow: hidden;
+}
+
+.splash-loader span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ff8a2a, #e8590c);
+  animation: splash-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes splash-progress {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(360%); }
+}
+
+.splash-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  letter-spacing: 0.02em;
+  animation: splash-enter 0.5s var(--ease-out) 0.15s backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash,
+  .splash-logo,
+  .splash-title,
+  .splash-sub,
+  .splash-status,
+  .splash-loader span {
+    transition: none;
+    animation: none;
+  }
+
+  .splash--exit {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* ===== 对话视图补充（会话加载 / 图片拖拽 / 附件按钮） ===== */
+.timeline-loading {
+  flex: 1;
+}
+
+.chat-pane.is-dragover .composer {
+  outline: 2px dashed color-mix(in srgb, var(--link) 60%, transparent);
+  outline-offset: -6px;
+  border-radius: var(--radius-md);
+}
+
+.composer-attach-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-attachment--busy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.ui-dialog__message {
+  margin: 0 0 10px;
+  color: var(--muted-foreground);
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ui-dialog__message:last-child {
+  margin-bottom: 0;
+}
+
+.ext-head-loading,
+.pkg-sentinel-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.discover-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

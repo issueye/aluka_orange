@@ -5,12 +5,20 @@
  * 仅放类型，不放运行时逻辑。
  */
 
+/** 用户消息携带的图片附件（Base64 数据 + MIME 类型） */
+export type TimelineImage = {
+  data: string;
+  mimeType: string;
+};
+
 /** 时间线消息项：对话中的一条消息 */
 export type TimelineItem = {
   id: string;
   /** 消息角色：用户/助手/工具/系统 */
   role: "user" | "assistant" | "tool" | "system";
   text: string;
+  /** 用户消息携带的图片附件 */
+  images?: TimelineImage[];
   /** 工具调用时的工具名（仅 tool 类型） */
   toolName?: string;
   timestamp: number;
@@ -19,6 +27,18 @@ export type TimelineItem = {
   resultText?: string;
   isError?: boolean;
   toolStatus?: "running" | "done" | "error";
+};
+
+/** 输入框待发送的图片附件（含预览用 dataUrl） */
+export type ImageAttachment = {
+  id: string;
+  name: string;
+  /** 预览与发送共用的 data:image/... URL */
+  dataUrl: string;
+  /** Base64 数据（不含 data: 前缀） */
+  base64: string;
+  mimeType: string;
+  size: number;
 };
 
 /** 会话摘要：用于侧边栏列表显示 */

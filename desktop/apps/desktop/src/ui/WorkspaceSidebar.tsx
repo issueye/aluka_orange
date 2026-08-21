@@ -195,6 +195,7 @@ export function WorkspaceSidebar({
                   className="ws-folder-del ws-folder-open"
                   title={`打开所在文件夹：${ws.path}`}
                   onClick={(e) => {
+                    console.log("reveal folder", ws.path);
                     e.stopPropagation();
                     onRevealFolder(ws.path);
                   }}

@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { bridge, rpc } from "./bridge.ts";
+import { LoadingBlock } from "./components/index.ts";
 import type { UsageProviderStat, UsageStatsView } from "./types.ts";
 
 /** 供应商配色（深/浅主题下均可读）；供应商数超出后循环取色 */
@@ -206,7 +207,7 @@ export function UsagePanel(props: { reloadKey?: number }) {
   if (loading) {
     return (
       <div className="settings-page-sections">
-        <p className="settings-meta">正在加载用量统计…</p>
+        <LoadingBlock text="正在加载用量统计…" />
       </div>
     );
   }

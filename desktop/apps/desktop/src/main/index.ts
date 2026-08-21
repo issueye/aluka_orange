@@ -5,7 +5,7 @@
  * - 退出前中止任务、杀掉子进程，避免残留
  * - registerRPC 不 await Promise：异步用 fire-and-forget + win.emit
  */
-import { app, createWindow, createTray, setAssetDir, globalShortcut } from "aluka:gui";
+import { app, createWindow, createTray, setAssetDir, globalShortcut, shell } from "aluka:gui";
 import { createDesktopHost, type DesktopHost } from "../host/index.ts";
 import { pickFolder } from "../host/choose-folder.ts";
 import { PROTOCOL_VERSION } from "../shared/contracts.ts";
@@ -13,7 +13,6 @@ import { VERSION } from "../../../../../agent/src/config.ts";
 import { coerceApi } from "../../../../../agent/src/ai/types.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -131,21 +130,9 @@ app.registerRPC("revealFolder", (params: { path?: string }) => {
   if (!params?.path?.trim()) throw new Error("revealFolder requires path");
   const resolved = path.resolve(params.path.trim());
   if (!fs.existsSync(resolved)) throw new Error(`文件夹不存在：${params.path}`);
-  let cmd = "/usr/bin/xdg-open";
-  let args: string[] = [resolved];
-  if (process.platform === "win32") {
-    cmd = path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe");
-    args = [resolved];
-  } else if (process.platform === "darwin") {
-    cmd = "/usr/bin/open";
-  }
-  try {
-    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
-    child.on("error", () => {});
-    return { ok: true };
-  } catch {
-    throw new Error("无法打开文件夹");
-  }
+  // 原生 GUI shell：后台在系统文件管理器中打开并定位该文件夹（异步，无需等待）
+  void shell.showItemInFolder(resolved);
+  return { ok: true };
 });
 app.registerRPC("chooseWorkspace", (params?: { mode?: "latest" | "new" }) => {
   const mode = params?.mode === "new" ? "new" : "latest";
@@ -197,8 +184,12 @@ app.registerRPC("removeLocalPackage", (params: { path?: string }) => {
 app.registerRPC("respondExtensionUi", (params: Parameters<DesktopHost["respondExtensionUi"]>[0]) =>
   requireHost().respondExtensionUi(params),
 );
-app.registerRPC("sendPrompt", (params: { text?: string }) => {
+app.registerRPC("sendPrompt", (params: { text?: string; images?: Array<{ data?: string; mimeType?: string }> }) => {
   const text = String(params?.text ?? "");
+  // 图片附件：Base64 数据 + MIME 类型（在 UI 侧完成压缩与尺寸约束）
+  const images = (params?.images ?? [])
+    .filter((img) => typeof img?.data === "string" && img.data.trim() && typeof img?.mimeType === "string")
+    .map((img) => ({ data: img.data, mimeType: img.mimeType as string }));
   // 记录发起时的活跃会话，结果事件据此路由（多会话并行时互不干扰）
   const sessionId = (() => {
     try {
@@ -208,7 +199,7 @@ app.registerRPC("sendPrompt", (params: { text?: string }) => {
     }
   })();
   void requireHost()
-    .sendPrompt(text)
+    .sendPrompt(text, images)
     .then((result) => {
       win.emit("prompt.result", { ...result, sessionId });
     })
