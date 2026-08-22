@@ -1,7 +1,8 @@
 /**
- * 扩展视图（「扩展」页面，全宽布局）
+ * 扩展视图（「扩展」页面，设置式左右分栏布局）
  *
- * 三个页签：
+ * 与设置页同构：左侧 rail（返回 + 搜索胶囊 + 分组菜单），右侧内容列
+ * （大标题行 + 清单摘要/刷新 + 页签内容）。顶层页签改挂在左侧菜单：
  * - 工具：插件市场（发现）与已安装插件、已加载扩展、加载错误
  * - 提示词：.aluka/prompts 下的 Markdown 提示词片段，可一键插入对话输入框
  * - 技能：自动注入系统提示的技能文件清单
@@ -10,8 +11,9 @@
  * aluka:extensions-reloaded 事件，本视图监听后刷新全部清单。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, BookOpen, MessageSquareText, Search, Wrench } from "lucide-react";
 import { rpc, bridge } from "../bridge.ts";
-import { Button, LoadingBlock, SectionHead, Spinner } from "../components/index.ts";
+import { Button, LoadingBlock, Spinner } from "../components/index.ts";
 import type { InstalledPkg, MarketRow, PromptItem, SkillItem, Toast } from "../types.ts";
 
 /** 市场分页大小（与 zeno 桌面壳一致：每页 20，触底加载下一页） */
@@ -245,13 +247,13 @@ export function ExtensionsView(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogQuery]);
 
-  /** 触底无限滚动：哨兵进入 settings-page 可视区即加载下一页 */
+  /** 触底无限滚动：哨兵进入 settings-content 可视区即加载下一页 */
   useEffect(() => {
     if (tab !== "tools" || toolsSubTab !== "discover") return;
     if (catalog.length >= catalogTotal || catalogLoading) return;
     const sentinel = catalogEndRef.current;
     if (!sentinel) return;
-    const root = sentinel.closest(".settings-page");
+    const root = sentinel.closest(".settings-content");
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) void loadMoreCatalog();
@@ -301,302 +303,333 @@ export function ExtensionsView(props: {
     return n >= 1000 ? `${(n / 1000).toFixed(1)}K/月` : `${n}/月`;
   }
 
+  /** 左侧搜索胶囊：按当前页签绑定各自的过滤词（市场发现走服务端查询） */
+  const navSearchValue = tab === "tools"
+    ? toolsSubTab === "discover" ? catalogQuery : installedFilter
+    : tab === "prompts" ? promptsFilter : skillsFilter;
+
+  const navSearchPlaceholder = tab === "tools"
+    ? toolsSubTab === "discover" ? "搜索插件…（留空列出热门）" : "过滤已安装插件…"
+    : tab === "prompts" ? "过滤提示词…" : "过滤技能…";
+
+  function setNavSearch(value: string) {
+    if (tab === "tools") {
+      if (toolsSubTab === "discover") setCatalogQuery(value);
+      else setInstalledFilter(value);
+    } else if (tab === "prompts") {
+      setPromptsFilter(value);
+    } else {
+      setSkillsFilter(value);
+    }
+  }
+
   return (
-    <div className="settings-page settings-page--full" data-aluka-drag="no-drag">
-      <div className="settings-page-inner">
-        <SectionHead
-          title="扩展"
-          hint="工具：插件市场与已加载扩展；提示词：.aluka/prompts 下的 Markdown 片段，可插入输入框复用；技能：自动注入系统提示的技能文件。安装插件后可点击顶栏 ↻ 重载生效。"
-        />
-        <div className="ext-head-actions">
-          {extLoading ? (
-            <span className="hint ext-head-loading">
-              <Spinner size={12} label="加载清单中" /> 加载清单中…
-            </span>
-          ) : (
-            <span className="hint">{extSummary || "暂无数据"}</span>
-          )}
-          <Button variant="secondary" disabled={extLoading} onClick={() => {
-            void refreshInventories();
-            void loadInstalledPackages();
-            if (tab === "tools" && toolsSubTab === "discover") void loadCatalog();
-          }}>{extLoading ? "刷新中…" : "刷新"}</Button>
+    <div className="settings-split" data-aluka-drag="no-drag">
+      <nav className="settings-nav">
+        <button type="button" className="settings-rail-back" onClick={props.onBack}>
+          <ArrowLeft size={14} strokeWidth={1.75} />
+          <span className="truncate">返回对话</span>
+        </button>
+        <div className="settings-nav-search">
+          <Search size={14} strokeWidth={1.75} className="settings-search-icon" />
+          <input
+            type="search"
+            className="settings-search-input"
+            value={navSearchValue}
+            placeholder={navSearchPlaceholder}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => setNavSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && tab === "tools" && toolsSubTab === "discover") {
+                void loadCatalog();
+              }
+            }}
+          />
         </div>
-
-        <div className="page-tabs">
-          <button
-            type="button"
-            className="page-tab"
-            data-active={tab === "tools"}
-            onClick={() => setTab("tools")}
-          >
-            工具
-          </button>
-          <button
-            type="button"
-            className="page-tab"
-            data-active={tab === "prompts"}
-            onClick={() => setTab("prompts")}
-          >
-            提示词
-          </button>
-          <button
-            type="button"
-            className="page-tab"
-            data-active={tab === "skills"}
-            onClick={() => setTab("skills")}
-          >
-            技能
-          </button>
-        </div>
-
-        {tab === "tools" ? (
-          <div className="ext-tab-body">
-            <div className="page-tabs page-tabs--sub">
+        <div className="settings-nav-scroll">
+          <div className="settings-nav-group">
+            <p className="settings-rail-group-label">扩展</p>
+            <div className="settings-rail-items">
               <button
                 type="button"
-                className="page-tab"
-                data-active={toolsSubTab === "installed"}
-                onClick={() => setToolsSubTab("installed")}
+                className="settings-rail-item"
+                data-active={tab === "tools"}
+                onClick={() => setTab("tools")}
               >
-                已安装
+                <Wrench size={14} strokeWidth={1.75} className="settings-rail-item-icon" />
+                <span className="truncate">工具</span>
               </button>
               <button
                 type="button"
-                className="page-tab"
-                data-active={toolsSubTab === "discover"}
-                onClick={() => setToolsSubTab("discover")}
+                className="settings-rail-item"
+                data-active={tab === "prompts"}
+                onClick={() => setTab("prompts")}
               >
-                发现
+                <MessageSquareText size={14} strokeWidth={1.75} className="settings-rail-item-icon" />
+                <span className="truncate">提示词</span>
+              </button>
+              <button
+                type="button"
+                className="settings-rail-item"
+                data-active={tab === "skills"}
+                onClick={() => setTab("skills")}
+              >
+                <BookOpen size={14} strokeWidth={1.75} className="settings-rail-item-icon" />
+                <span className="truncate">技能</span>
               </button>
             </div>
+          </div>
+        </div>
+      </nav>
 
-            {toolsSubTab === "discover" ? (
-              <>
-                <div className="discover-toolbar">
-                  <input
-                    className="ui-input discover-search"
-                    value={catalogQuery}
-                    placeholder="搜索插件：mcp、web-access、subagents…（留空列出热门）"
-                    onChange={(e) => setCatalogQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void loadCatalog();
-                    }}
-                  />
-                  <a
-                    className="discover-web-link"
-                    href="https://pi.dev/packages"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    打开网页市场
-                  </a>
-                </div>
-                {catalogError ? <p className="discover-error">{catalogError}</p> : null}
-                {catalogLoading && catalog.length === 0 ? (
-                  <LoadingBlock text="正在查询插件市场…" />
-                ) : catalog.length === 0 ? (
-                  <div className="pkg-empty">
-                    <p>没有匹配的包。换个关键词试试，或打开网页市场浏览全部。</p>
+      <div className="settings-content">
+        <div className="settings-page-shell">
+          <div className="settings-page-title-row">
+            <h1 className="settings-page-title">扩展</h1>
+            <div className="settings-page-title-action ext-title-actions">
+              {extLoading ? (
+                <span className="hint ext-head-loading">
+                  <Spinner size={12} label="加载清单中" /> 加载清单中…
+                </span>
+              ) : (
+                <span className="hint">{extSummary || "暂无数据"}</span>
+              )}
+              <Button variant="secondary" disabled={extLoading} onClick={() => {
+                void refreshInventories();
+                void loadInstalledPackages();
+                if (tab === "tools" && toolsSubTab === "discover") void loadCatalog();
+              }}>{extLoading ? "刷新中…" : "刷新"}</Button>
+            </div>
+          </div>
+          <p className="hint ext-page-subtitle">
+            工具：插件市场与已加载扩展；提示词：.aluka/prompts 下的 Markdown 片段，可插入输入框复用；技能：自动注入系统提示的技能文件。安装插件后可点击顶栏 ↻ 重载生效。
+          </p>
+
+          {tab === "tools" ? (
+            <div className="ext-tab-body">
+              <div className="page-tabs page-tabs--sub">
+                <button
+                  type="button"
+                  className="page-tab"
+                  data-active={toolsSubTab === "installed"}
+                  onClick={() => setToolsSubTab("installed")}
+                >
+                  已安装
+                </button>
+                <button
+                  type="button"
+                  className="page-tab"
+                  data-active={toolsSubTab === "discover"}
+                  onClick={() => setToolsSubTab("discover")}
+                >
+                  发现
+                </button>
+              </div>
+
+              {toolsSubTab === "discover" ? (
+                <>
+                  <div className="discover-toolbar discover-toolbar--between">
+                    <span className="hint discover-count">
+                      {catalogTotal ? `共 ${catalogTotal} 个结果` : ""}
+                    </span>
+                    <a
+                      className="discover-web-link"
+                      href="https://pi.dev/packages"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      打开网页市场
+                    </a>
                   </div>
-                ) : (
-                  <>
-                    <ul className="pkg-list">
-                      {catalog.map((row) => {
-                        const chips = (row.keywords ?? [])
-                          .filter((k) => k !== "pi-package" && k !== "mcp-server")
-                          .slice(0, 3);
-                        return (
-                          <li key={row.name} className="pkg-card">
-                            <div className="market-info">
-                              <div className="market-name">
-                                <a href={row.npmUrl ?? `https://www.npmjs.com/package/${row.name}`} target="_blank" rel="noreferrer">
-                                  {row.name}
-                                </a>
-                                {row.version ? <span className="hint">v{row.version}</span> : null}
-                                {row.installed ? <span className="auth-badge ok">已安装</span> : null}
-                              </div>
-                              {row.description ? <div className="hint market-desc">{row.description}</div> : null}
-                              <div className="hint market-meta">
-                                {[
-                                  row.author,
-                                  row.monthlyDownloads ? formatMonthlyDownloads(row.monthlyDownloads) : undefined,
-                                ].filter(Boolean).join(" · ") || "—"}
-                              </div>
-                              {chips.length ? (
-                                <div className="pkg-chips">
-                                  {chips.map((k) => <span key={k} className="pkg-chip">{k}</span>)}
+                  {catalogError ? <p className="discover-error">{catalogError}</p> : null}
+                  {catalogLoading && catalog.length === 0 ? (
+                    <LoadingBlock text="正在查询插件市场…" />
+                  ) : catalog.length === 0 ? (
+                    <div className="pkg-empty">
+                      <p>没有匹配的包。换个关键词试试，或打开网页市场浏览全部。</p>
+                    </div>
+                  ) : (
+                    <>
+                      <ul className="pkg-list">
+                        {catalog.map((row) => {
+                          const chips = (row.keywords ?? [])
+                            .filter((k) => k !== "pi-package" && k !== "mcp-server")
+                            .slice(0, 3);
+                          return (
+                            <li key={row.name} className="pkg-card">
+                              <div className="market-info">
+                                <div className="market-name">
+                                  <a href={row.npmUrl ?? `https://www.npmjs.com/package/${row.name}`} target="_blank" rel="noreferrer">
+                                    {row.name}
+                                  </a>
+                                  {row.version ? <span className="hint">v{row.version}</span> : null}
+                                  {row.installed ? <span className="auth-badge ok">已安装</span> : null}
                                 </div>
-                              ) : null}
-                            </div>
-                            <Button
-                              variant={row.installed ? "ghost" : "secondary"}
-                              size="sm"
-                              disabled={marketBusy === row.name}
-                              onClick={() => (row.installed ? void removeMarket(row.name) : installMarket(row.name))}
-                            >
-                              {marketBusy === row.name ? <><Spinner size={11} label="处理中" /> 处理中…</> : row.installed ? "移除" : "安装"}
-                            </Button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <div ref={catalogEndRef} className="pkg-sentinel hint">
-                      {catalogLoadingMore ? (
-                        <span className="pkg-sentinel-loading">
-                          <Spinner size={12} label="加载更多" /> 加载更多…
-                        </span>
-                      ) : catalog.length < catalogTotal
-                        ? `已展示 ${catalog.length} / ${catalogTotal}`
-                        : `已加载全部 ${catalog.length} 条结果`}
-                    </div>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="discover-toolbar">
-                  <input
-                    className="ui-input discover-search"
-                    value={installedFilter}
-                    placeholder="过滤已安装插件（按名称 / 描述）…"
-                    onChange={(e) => setInstalledFilter(e.target.value)}
-                  />
-                  <span className="hint discover-count">
-                    {installedPkgs.length ? `共 ${installedPkgs.length} 个插件` : ""}
-                  </span>
-                </div>
-                {installedFiltered.length ? (
-                  <ul className="pkg-list">
-                    {installedFiltered.map((pkg) => (
-                      <li key={pkg.name} className="pkg-card">
-                        <div className="market-info">
-                          <div className="market-name">
-                            <a href={`https://www.npmjs.com/package/${pkg.name}`} target="_blank" rel="noreferrer">
-                              {pkg.name}
-                            </a>
-                            {pkg.version ? <span className="hint">v{pkg.version}</span> : null}
-                            <span className="pkg-chip">npm</span>
-                          </div>
-                          {pkg.description ? <div className="hint market-desc">{pkg.description}</div> : null}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={marketBusy === pkg.name}
-                          onClick={() => void removeMarket(pkg.name)}
-                        >
-                          {marketBusy === pkg.name ? <><Spinner size={11} label="移除中" /> 移除中…</> : "移除"}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="pkg-empty">
-                    <p>
-                      {installedPkgs.length
-                        ? "没有匹配过滤条件的插件。"
-                        : "暂无已安装插件。~/.aluka/agent/npm-packages 为空，可切到「发现」从市场安装。"}
-                    </p>
+                                {row.description ? <div className="hint market-desc">{row.description}</div> : null}
+                                <div className="hint market-meta">
+                                  {[
+                                    row.author,
+                                    row.monthlyDownloads ? formatMonthlyDownloads(row.monthlyDownloads) : undefined,
+                                  ].filter(Boolean).join(" · ") || "—"}
+                                </div>
+                                {chips.length ? (
+                                  <div className="pkg-chips">
+                                    {chips.map((k) => <span key={k} className="pkg-chip">{k}</span>)}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <Button
+                                variant={row.installed ? "ghost" : "secondary"}
+                                size="sm"
+                                disabled={marketBusy === row.name}
+                                onClick={() => (row.installed ? void removeMarket(row.name) : installMarket(row.name))}
+                              >
+                                {marketBusy === row.name ? <><Spinner size={11} label="处理中" /> 处理中…</> : row.installed ? "移除" : "安装"}
+                              </Button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <div ref={catalogEndRef} className="pkg-sentinel hint">
+                        {catalogLoadingMore ? (
+                          <span className="pkg-sentinel-loading">
+                            <Spinner size={12} label="加载更多" /> 加载更多…
+                          </span>
+                        ) : catalog.length < catalogTotal
+                          ? `已展示 ${catalog.length} / ${catalogTotal}`
+                          : `已加载全部 ${catalog.length} 条结果`}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="discover-toolbar">
+                    <span className="hint discover-count">
+                      {installedPkgs.length ? `共 ${installedPkgs.length} 个插件` : ""}
+                    </span>
                   </div>
-                )}
+                  {installedFiltered.length ? (
+                    <ul className="pkg-list">
+                      {installedFiltered.map((pkg) => (
+                        <li key={pkg.name} className="pkg-card">
+                          <div className="market-info">
+                            <div className="market-name">
+                              <a href={`https://www.npmjs.com/package/${pkg.name}`} target="_blank" rel="noreferrer">
+                                {pkg.name}
+                              </a>
+                              {pkg.version ? <span className="hint">v{pkg.version}</span> : null}
+                              <span className="pkg-chip">npm</span>
+                            </div>
+                            {pkg.description ? <div className="hint market-desc">{pkg.description}</div> : null}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={marketBusy === pkg.name}
+                            onClick={() => void removeMarket(pkg.name)}
+                          >
+                            {marketBusy === pkg.name ? <><Spinner size={11} label="移除中" /> 移除中…</> : "移除"}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="pkg-empty">
+                      <p>
+                        {installedPkgs.length
+                          ? "没有匹配过滤条件的插件。"
+                          : "暂无已安装插件。~/.aluka/agent/npm-packages 为空，可切到「发现」从市场安装。"}
+                      </p>
+                    </div>
+                  )}
 
-                <h3 className="sidebar-section-label">已加载扩展（当前目录）</h3>
-                <ul className="inv-list">
-                  {extList.length ? extList.map((ext) => (
-                    <li key={ext.path}>
-                      <strong>{ext.path}</strong>
-                      <div className="hint">工具：{ext.tools.join(", ") || "—"}</div>
-                      <div className="hint">命令：{ext.commands.join(", ") || "—"}</div>
+                  <section className="settings-section-block">
+                    <h2 className="settings-section-label">已加载扩展（当前目录）</h2>
+                    <ul className="inv-list">
+                      {extList.length ? extList.map((ext) => (
+                        <li key={ext.path}>
+                          <strong>{ext.path}</strong>
+                          <div className="hint">工具：{ext.tools.join(", ") || "—"}</div>
+                          <div className="hint">命令：{ext.commands.join(", ") || "—"}</div>
+                        </li>
+                      )) : <li className="hint">未加载扩展</li>}
+                    </ul>
+                  </section>
+                  <section className="settings-section-block">
+                    <h2 className="settings-section-label">加载错误</h2>
+                    <ul className="inv-list">
+                      {extErrors.length ? extErrors.map((err) => (
+                        <li key={err.path}><strong>{err.path}</strong><div style={{ color: "var(--danger)" }}>{err.error}</div></li>
+                      )) : <li className="hint">无</li>}
+                    </ul>
+                  </section>
+                </>
+              )}
+            </div>
+          ) : tab === "prompts" ? (
+            <div className="ext-tab-body">
+              <div className="discover-toolbar">
+                <span className="hint discover-count">
+                  {prompts === undefined ? <><Spinner size={11} label="加载中" /> 加载中…</> : prompts.length ? `共 ${prompts.length} 个提示词` : ""}
+                </span>
+              </div>
+              {promptsFiltered.length ? (
+                <ul className="pkg-list">
+                  {promptsFiltered.map((p) => (
+                    <li key={p.path} className="pkg-card">
+                      <div className="market-info">
+                        <div className="market-name" title={p.path}>{p.name}</div>
+                        {p.description ? <div className="hint market-desc">{p.description}</div> : null}
+                        <div className="hint market-meta skill-path" title={p.path}>{p.path}</div>
+                      </div>
+                      <Button variant="secondary" size="sm" onClick={() => insertPrompt(p)}>
+                        插入输入框
+                      </Button>
                     </li>
-                  )) : <li className="hint">未加载扩展</li>}
+                  ))}
                 </ul>
-                <h3 className="sidebar-section-label">加载错误</h3>
-                <ul className="inv-list">
-                  {extErrors.length ? extErrors.map((err) => (
-                    <li key={err.path}><strong>{err.path}</strong><div style={{ color: "var(--danger)" }}>{err.error}</div></li>
-                  )) : <li className="hint">无</li>}
+              ) : (
+                <div className="pkg-empty">
+                  <p>
+                    {prompts?.length
+                      ? "没有匹配过滤条件的提示词。"
+                      : "还没有提示词。在当前目录 .aluka/prompts 或 ~/.aluka/agent/prompts 下创建带 frontmatter（name / description）的 Markdown 文件即可。"}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="ext-tab-body">
+              <div className="discover-toolbar">
+                <span className="hint discover-count">
+                  {skills === undefined ? <><Spinner size={11} label="加载中" /> 加载中…</> : skills.length ? `共 ${skills.length} 个技能` : ""}
+                </span>
+              </div>
+              {skillsFiltered.length ? (
+                <ul className="pkg-list">
+                  {skillsFiltered.map((s) => (
+                    <li key={s.path} className="pkg-card">
+                      <div className="market-info">
+                        <div className="market-name">{s.name}</div>
+                        {s.description ? <div className="hint market-desc">{s.description}</div> : null}
+                        <div className="hint market-meta skill-path" title={s.path}>{s.path}</div>
+                      </div>
+                    </li>
+                  ))}
                 </ul>
-              </>
-            )}
-          </div>
-        ) : tab === "prompts" ? (
-          <div className="ext-tab-body">
-            <div className="discover-toolbar">
-              <input
-                className="ui-input discover-search"
-                value={promptsFilter}
-                placeholder="过滤提示词（按名称 / 描述 / 路径）…"
-                onChange={(e) => setPromptsFilter(e.target.value)}
-              />
-              <span className="hint discover-count">
-                {prompts === undefined ? <><Spinner size={11} label="加载中" /> 加载中…</> : prompts.length ? `共 ${prompts.length} 个提示词` : ""}
-              </span>
+              ) : (
+                <div className="pkg-empty">
+                  <p>
+                    {skills?.length
+                      ? "没有匹配过滤条件的技能。"
+                      : "当前工作区还没有技能。在当前目录 .aluka/skills 或 ~/.aluka/agent/skills 下创建带 frontmatter（name / description）的 Markdown 文件即可。"}
+                  </p>
+                </div>
+              )}
             </div>
-            {promptsFiltered.length ? (
-              <ul className="pkg-list">
-                {promptsFiltered.map((p) => (
-                  <li key={p.path} className="pkg-card">
-                    <div className="market-info">
-                      <div className="market-name" title={p.path}>{p.name}</div>
-                      {p.description ? <div className="hint market-desc">{p.description}</div> : null}
-                      <div className="hint market-meta skill-path" title={p.path}>{p.path}</div>
-                    </div>
-                    <Button variant="secondary" size="sm" onClick={() => insertPrompt(p)}>
-                      插入输入框
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="pkg-empty">
-                <p>
-                  {prompts?.length
-                    ? "没有匹配过滤条件的提示词。"
-                    : "还没有提示词。在当前目录 .aluka/prompts 或 ~/.aluka/agent/prompts 下创建带 frontmatter（name / description）的 Markdown 文件即可。"}
-                </p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="ext-tab-body">
-            <div className="discover-toolbar">
-              <input
-                className="ui-input discover-search"
-                value={skillsFilter}
-                placeholder="过滤技能（按名称 / 描述 / 路径）…"
-                onChange={(e) => setSkillsFilter(e.target.value)}
-              />
-              <span className="hint discover-count">
-                {skills === undefined ? <><Spinner size={11} label="加载中" /> 加载中…</> : skills.length ? `共 ${skills.length} 个技能` : ""}
-              </span>
-            </div>
-            {skillsFiltered.length ? (
-              <ul className="pkg-list">
-                {skillsFiltered.map((s) => (
-                  <li key={s.path} className="pkg-card">
-                    <div className="market-info">
-                      <div className="market-name">{s.name}</div>
-                      {s.description ? <div className="hint market-desc">{s.description}</div> : null}
-                      <div className="hint market-meta skill-path" title={s.path}>{s.path}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="pkg-empty">
-                <p>
-                  {skills?.length
-                    ? "没有匹配过滤条件的技能。"
-                    : "当前工作区还没有技能。在当前目录 .aluka/skills 或 ~/.aluka/agent/skills 下创建带 frontmatter（name / description）的 Markdown 文件即可。"}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="settings-inline-actions">
-          <Button variant="secondary" onClick={props.onBack}>返回</Button>
+          )}
         </div>
       </div>
     </div>

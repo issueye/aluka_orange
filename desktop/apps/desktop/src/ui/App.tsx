@@ -15,6 +15,7 @@ import {
 import { bridge, rpc } from "./bridge.ts";
 import { Logo } from "./Logo.tsx";
 import { WorkspaceSidebar, type WorkspaceItem } from "./WorkspaceSidebar.tsx";
+import { WindowResizeHandle } from "./WindowResizeHandle.tsx";
 import { ChatView } from "./views/ChatView.tsx";
 import { SettingsView } from "./views/SettingsView.tsx";
 import { ExtensionsView } from "./views/ExtensionsView.tsx";
@@ -1126,6 +1127,8 @@ export function App() {
           />
         )}
       </section>
+
+      <WindowResizeHandle />
 
       <div className="toast-stack">
         {toasts.map((t) => (

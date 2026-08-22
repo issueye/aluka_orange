@@ -32,7 +32,7 @@
   --sidebar: #151515;
   --sidebar-border: #383838;
   --bg-composer: #2b2b2b;
-  --composer-border: color-mix(in srgb, #ffffff 11%, #2b2b2b);
+  --composer-border: color-mix(in srgb, #ffffff 18%, #2b2b2b);
   --user-bubble: #2f2f2f;
   --user-bubble-border: color-mix(in srgb, #ffffff 10%, transparent);
   --user-bubble-shadow:
@@ -83,7 +83,7 @@
   --sidebar: #f1f2f4;
   --sidebar-border: #e2e5eb;
   --bg-composer: #ffffff;
-  --composer-border: #e2e5eb;
+  --composer-border: #d3d8e2;
   --user-bubble: #f6f6f7;
   --user-bubble-border: #e6e6ea;
   --user-bubble-hover-border: #d9d9e0;
@@ -562,10 +562,10 @@ select {
   gap: 6px;
   max-width: 100%;
   border: 0;
-  background: var(--surface-soft);
+  background: transparent;
   color: var(--muted-foreground);
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: 12px;
 }
@@ -949,7 +949,7 @@ select {
   padding: 24px 28px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -1094,7 +1094,7 @@ select {
   padding: 0;
   overflow: hidden;
   color: var(--foreground);
-  min-height: 36px;
+  min-height: 28px;
 }
 
 .bubble.tool.error {
@@ -1104,17 +1104,17 @@ select {
 .tool-card {
   display: block;
   min-width: 0;
-  min-height: 36px;
+  min-height: 28px;
 }
 
 .tool-card__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  min-height: 36px;
+  min-height: 28px;
   margin: 0;
-  padding: 8px 12px;
+  padding: 4px 10px;
   border: none;
   border-bottom: 1px solid transparent;
   background: transparent;
@@ -1173,8 +1173,8 @@ select {
   color: var(--muted-foreground);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 0 5px;
-  line-height: 16px;
+  padding: 0 4px;
+  line-height: 14px;
   white-space: nowrap;
 }
 
@@ -1220,7 +1220,7 @@ select {
 }
 
 .tool-card__args {
-  padding: 8px 12px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1250,7 +1250,7 @@ select {
 
 .tool-card__args-fallback {
   margin: 0;
-  padding: 8px 12px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--border);
   font-family: var(--mono);
   font-size: 12px;
@@ -1259,7 +1259,7 @@ select {
 }
 
 .tool-card__pending {
-  padding: 10px 12px 12px;
+  padding: 6px 10px 8px;
   font-size: 12px;
   color: var(--muted-foreground);
 }
@@ -1281,7 +1281,7 @@ select {
   table-layout: auto;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 .code-view td {
@@ -1293,14 +1293,14 @@ select {
   width: 1%;
   user-select: none;
   text-align: right;
-  padding: 1px 10px 1px 12px !important;
+  padding: 1px 8px 1px 10px !important;
   color: var(--muted-foreground);
   border-right: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .code-view__src {
-  padding: 1px 12px 1px 10px !important;
+  padding: 1px 10px 1px 8px !important;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--foreground);
@@ -1309,7 +1309,7 @@ select {
 .tool-card__terminal,
 .tool-card__plain {
   margin: 0;
-  padding: 10px 14px 12px;
+  padding: 6px 12px 8px;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
@@ -1319,7 +1319,7 @@ select {
 }
 
 .tool-card__notice {
-  padding: 6px 14px 10px;
+  padding: 4px 12px 6px;
   font-size: 11px;
   color: var(--muted-foreground);
   border-top: 1px dashed var(--border);
@@ -1404,11 +1404,11 @@ select {
   width: min(100%, var(--thread-max));
   background: var(--bg-composer);
   border: 1px solid var(--composer-border);
-  border-radius: var(--radius-lg);
-  padding: 12px;
+  border-radius: 16px;
+  padding: 10px 12px 8px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   box-shadow: var(--shadow-soft);
 }
 
@@ -1416,13 +1416,13 @@ select {
 .composer .ui-textarea--composer {
   width: 100%;
   resize: none;
-  min-height: 64px;
+  min-height: 40px;
   max-height: 180px;
   border: 0;
   outline: none;
   background: transparent;
   color: var(--foreground);
-  padding: 4px;
+  padding: 4px 6px;
 }
 
 .composer-actions {
@@ -1435,7 +1435,7 @@ select {
 .composer-actions-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -1443,14 +1443,45 @@ select {
 .composer-actions-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex-shrink: 0;
+}
+
+/* 输入框内下拉：贴近参考设计的无边框文字触发器 */
+.composer .ui-select--compact .ui-select__trigger {
+  padding: 6px 8px;
+  font-size: 12px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.composer .ui-select--compact .ui-select__trigger:hover {
+  border-color: color-mix(in srgb, var(--link) 40%, var(--border));
+}
+
+/* 发送按钮：参考设计的方形实心圆角块 */
+.composer-send-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 附件按钮：与发送按钮同尺寸的方形点击区 */
+.composer-attach-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
 }
 
 .composer-run-btn {
   position: relative;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--primary) 48%, var(--border));
@@ -2090,6 +2121,33 @@ select {
   color: var(--muted-foreground);
 }
 
+/* —— 无边框窗口：右下角拖拽缩放手柄 —— */
+.window-resize-handle {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  color: var(--muted-foreground);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.4;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.window-resize-handle:hover {
+  opacity: 0.95;
+}
+
+.window-resize-handle svg {
+  display: block;
+  margin: 0 2px 2px 0;
+}
+
 /* —— Settings split (left nav + right content) —— */
 /* —— 设置页：左侧分组导航 rail + 右侧内容列（参考 zeno settings 设计语言） —— */
 .settings-split {
@@ -2612,10 +2670,26 @@ select {
   gap: 12px;
 }
 
+/* 扩展页（设置式分栏）：标题行动作区 + 页面说明 + 工具栏两端对齐 */
+.ext-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ext-page-subtitle {
+  margin: -14px 0 20px;
+  max-width: 70ch;
+}
+
 .discover-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.discover-toolbar--between {
+  justify-content: space-between;
 }
 
 .discover-search {

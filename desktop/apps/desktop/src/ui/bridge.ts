@@ -17,6 +17,10 @@ export type AlukaBridge = {
     minimize: () => void;
     toggleMaximize: () => void;
     close: () => void;
+    /** 调整窗口尺寸（无边框窗口用于拖角缩放；部分运行时可能不提供） */
+    setSize?: (width: number, height: number) => void;
+    /** 查询窗口尺寸：回包 [width, height] 或 { width, height } */
+    getSize?: () => Promise<unknown>;
   };
   /** 事件总线：支持发布/订阅模式 */
   events: {

@@ -6,7 +6,7 @@
  * 图片附件支持选择 / 粘贴 / 拖拽，发送时随消息一起传给 Agent。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Folder, FolderPlus, ImagePlus, X } from "lucide-react";
+import { ArrowUp, Check, Copy, Folder, FolderPlus, ImagePlus, X } from "lucide-react";
 import { rpc } from "../bridge.ts";
 import { Button, ImageViewer, LoadingBlock, Markdown, Select, Textarea } from "../components/index.ts";
 import { ContextRing } from "../components/ContextRing.tsx";
@@ -304,18 +304,6 @@ export function ChatView(props: {
             void addImageFiles(images);
           }}
         >
-          <button
-            type="button"
-            className="composer-workspace"
-            title={settings.cwd || "临时工作区"}
-            onClick={() => props.chooseWorkspace("latest")}
-          >
-            <Folder size={13} />
-            <span>
-              {props.activeWorkspace?.name
-                || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "选择工作区")}
-            </span>
-          </button>
           {props.attachments.length || attBusy ? (
             <div className="ui-attachments">
               {props.attachments.map((att) => (
@@ -359,6 +347,43 @@ export function ChatView(props: {
           />
           <div className="composer-actions">
             <div className="composer-actions-left">
+              <button
+                type="button"
+                className="icon-btn composer-attach-btn"
+                title={props.attachments.length >= MAX_ATTACHMENTS
+                  ? `已达上限（${MAX_ATTACHMENTS} 张）`
+                  : "添加图片（也可直接粘贴 / 拖入）"}
+                disabled={props.busy || props.attachments.length >= MAX_ATTACHMENTS}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImagePlus size={15} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  void addImageFiles(files);
+                }}
+              />
+              <button
+                type="button"
+                className="composer-workspace"
+                title={settings.cwd || "临时工作区"}
+                onClick={() => props.chooseWorkspace("latest")}
+              >
+                <Folder size={13} />
+                <span>
+                  {props.activeWorkspace?.name
+                    || (settings.cwd ? settings.cwd.split(/[\\/]/).pop() : "选择工作区")}
+                </span>
+              </button>
+            </div>
+            <div className="composer-actions-right">
               <Select
                 className="model-picker ui-select--compact"
                 value={
@@ -393,31 +418,6 @@ export function ChatView(props: {
                 }))}
                 onChange={pickThinking}
               />
-              <button
-                type="button"
-                className="icon-btn composer-attach-btn"
-                title={props.attachments.length >= MAX_ATTACHMENTS
-                  ? `已达上限（${MAX_ATTACHMENTS} 张）`
-                  : "添加图片（也可直接粘贴 / 拖入）"}
-                disabled={props.busy || props.attachments.length >= MAX_ATTACHMENTS}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImagePlus size={15} />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(e) => {
-                  const files = Array.from(e.target.files ?? []);
-                  e.target.value = "";
-                  void addImageFiles(files);
-                }}
-              />
-            </div>
-            <div className="composer-actions-right">
               {props.busy ? (
                 <button
                   type="button"
@@ -432,8 +432,14 @@ export function ChatView(props: {
                   <span className="composer-run-btn__stop" />
                 </button>
               ) : (
-                <Button type="submit" disabled={!canSend}>
-                  发送
+                <Button
+                  type="submit"
+                  className="composer-send-btn"
+                  title="发送（Enter）"
+                  aria-label="发送"
+                  disabled={!canSend}
+                >
+                  <ArrowUp size={16} />
                 </Button>
               )}
             </div>
