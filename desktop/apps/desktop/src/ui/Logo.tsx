@@ -4,7 +4,13 @@
  */
 export function Logo({ size = 22 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 512 512"
+      aria-hidden="true"
+      style={{ flexShrink: 0, borderRadius: "25%" }}
+    >
       <rect x="32" y="32" width="448" height="448" rx="112" fill="#FFF6EA" />
       {/* 果皮环 / 白瓤层 */}
       <circle cx="256" cy="256" r="149" fill="none" stroke="#E8590C" strokeWidth="11" />
