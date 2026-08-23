@@ -517,6 +517,15 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     settings = saveSettings(settings, agentDir);
   }
 
+  // 启动时把已持久化到 settings.json 的 envVars 注入当前进程（编译版与 dev 一致）
+  if (stored.envVars) {
+    for (const [key, value] of Object.entries(stored.envVars)) {
+      if (typeof key === "string" && key.trim() && typeof value === "string") {
+        process.env[key] = value;
+      }
+    }
+  }
+
   const initial = resolveRuntimeModel({
     agentDir,
     settings,
