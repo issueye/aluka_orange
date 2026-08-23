@@ -59,12 +59,17 @@ function FieldRow(props: {
   );
 }
 
+/** 稳定空对象：选择器不得每次创建新引用（useSyncExternalStore 会无限重渲染） */
+const EMPTY_PLUGIN_SETTINGS: Record<string, unknown> = {};
+
 export function PluginSettingsSection() {
   const contributions = useShell((s) => s.uiContributions).filter(
     (c): c is UiContributionV2 =>
       c.version === 2 && c.slot === "settings.section" && Boolean(c.settings),
   );
-  const pluginSettings = useShell((s) => s.settings.pluginSettings ?? {});
+  const pluginSettings = useShell(
+    (s) => s.settings.pluginSettings ?? EMPTY_PLUGIN_SETTINGS,
+  );
   if (!contributions.length) return null;
   return (
     <div className="settings-page-sections">

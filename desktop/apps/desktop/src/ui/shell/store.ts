@@ -97,10 +97,23 @@ function initialDisabledContributions(): string[] {
   }
 }
 
+/** 初始视图：支持 ?view=settings|extensions|plugin:<id>（浏览器模式直达） */
+function initialView(): ShellView {
+  try {
+    const param = new URLSearchParams(window.location.search).get("view");
+    if (param && /^(settings|extensions|plugin:[A-Za-z0-9._-]+)$/.test(param)) {
+      return param as ShellView;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "chat";
+}
+
 export const shellStore = createStore<ShellState>(() => ({
   status: "连接中…",
   idleStatus: "就绪",
-  view: "chat",
+  view: initialView(),
   toasts: [],
   modal: undefined,
   selectChoice: undefined,

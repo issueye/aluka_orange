@@ -443,10 +443,11 @@ export function SettingsView(props: {
                 </div>
               </section>
             </div>
-            <PluginSettingsSection />
-            <EnvVarsSection />
           </div>
         )}
+        {/* 插件设置与环境变量：所有设置分区共用（about 之外也可见） */}
+        <PluginSettingsSection />
+        <EnvVarsSection />
       </div>
     </div>
   );
