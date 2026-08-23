@@ -43,6 +43,11 @@ export function EnvVarsSection() {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch, dirty: true } : row)));
   };
 
+  /** 通知扩展重载以重新读取 envVars（tavily 等需要 process.env 的工具） */
+  const notifyReload = () => {
+    void rpc<{ extensions?: unknown[] }>("reloadExtensions").catch(() => undefined);
+  };
+
   const saveRow = async (index: number) => {
     const row = rows[index];
     if (!row || !row.key.trim()) return;
@@ -53,6 +58,7 @@ export function EnvVarsSection() {
       });
       if (result?.ok) {
         await refresh();
+        notifyReload();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -64,7 +70,10 @@ export function EnvVarsSection() {
     if (!row) return;
     try {
       const result = await rpc<{ ok: boolean }>("removeEnvVar", { key: row.key });
-      if (result?.ok) await refresh();
+      if (result?.ok) {
+        await refresh();
+        notifyReload();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -79,6 +88,7 @@ export function EnvVarsSection() {
         setNewKey("");
         setNewValue("");
         await refresh();
+        notifyReload();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -167,7 +177,7 @@ export function EnvVarsSection() {
                   value={newValue}
                   onChange={setNewValue}
                 />
-                <Button variant="secondary" onClick={() => void addNew()}>
+                <Button className="ui-btn--add" variant="secondary" onClick={() => void addNew()}>
                   添加
                 </Button>
               </div>
