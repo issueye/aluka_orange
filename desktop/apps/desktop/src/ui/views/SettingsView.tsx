@@ -13,6 +13,7 @@ import {
   Folder,
   Info,
   Palette,
+  Puzzle,
   Search,
   Sparkles,
   TerminalSquare,
@@ -34,7 +35,7 @@ import type {
 import { pathsEqual, formatUsage } from "../lib/utils.ts";
 
 /** 设置页内的子分区 */
-type SettingsSection = "workspace" | "providers" | "appearance" | "usage" | "about" | "env";
+type SettingsSection = "workspace" | "providers" | "appearance" | "usage" | "about" | "env" | "plugins";
 
 /** 侧栏宽度默认值 / 允许范围（与 agent 侧 settings.ts 约定一致） */
 const SIDEBAR_WIDTH_DEFAULT = 288;
@@ -67,6 +68,7 @@ const SETTINGS_NAV_GROUPS: Array<{
     id: "other",
     label: "其他",
     items: [
+      { id: "plugins", label: "插件设置", icon: Puzzle },
       { id: "env", label: "环境变量", icon: TerminalSquare },
       { id: "about", label: "关于", icon: Info },
     ],
@@ -450,8 +452,7 @@ export function SettingsView(props: {
           </div>
         )}
         {section === "env" && <EnvVarsSection />}
-        {/* 插件设置：所有设置分区共用（about 之外也可见） */}
-        <PluginSettingsSection />
+        {section === "plugins" && <PluginSettingsSection />}
       </div>
     </div>
   );

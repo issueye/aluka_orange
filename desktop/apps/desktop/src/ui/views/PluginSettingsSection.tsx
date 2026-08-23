@@ -70,25 +70,48 @@ export function PluginSettingsSection() {
   const pluginSettings = useShell(
     (s) => s.settings.pluginSettings ?? EMPTY_PLUGIN_SETTINGS,
   );
-  if (!contributions.length) return null;
-  return (
-    <div className="settings-page-sections">
-      <section className="settings-section-block">
-        <h2 className="settings-section-label">插件设置</h2>
-        <div className="settings-card">
-          {contributions.flatMap((contribution) =>
-            Object.entries(contribution.settings ?? {}).map(([key, entry]) => (
-              <FieldRow
-                key={key}
-                keyName={key}
-                entry={entry}
-                value={(pluginSettings as Record<string, unknown>)[key] ?? entry.default}
-                onChange={(value) => void patchPluginSetting(key, value)}
-              />
-            )),
-          )}
+  if (!contributions.length) {
+    return (
+      <div className="settings-page-shell">
+        <div className="settings-page-title-row">
+          <h1 className="settings-page-title">插件设置</h1>
         </div>
-      </section>
+        <div className="settings-page-sections">
+          <section className="settings-section-block">
+            <h2 className="settings-section-label">插件设置</h2>
+            <div className="hint">暂无插件设置项</div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="settings-page-shell">
+      <div className="settings-page-title-row">
+        <h1 className="settings-page-title">插件设置</h1>
+      </div>
+      <div className="settings-page-sections">
+        <section className="settings-section-block">
+          <h2 className="settings-section-label">插件设置项</h2>
+          <div className="hint">
+            由 settings.section 槽位贡献自动渲染；写入 settings.json 后插件经
+            <code>pi.getPluginSetting</code> 读取。
+          </div>
+          <div className="settings-card">
+            {contributions.flatMap((contribution) =>
+              Object.entries(contribution.settings ?? {}).map(([key, entry]) => (
+                <FieldRow
+                  key={key}
+                  keyName={key}
+                  entry={entry}
+                  value={(pluginSettings as Record<string, unknown>)[key] ?? entry.default}
+                  onChange={(value) => void patchPluginSetting(key, value)}
+                />
+              )),
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
