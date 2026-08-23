@@ -226,6 +226,36 @@ describe("models.json preview", () => {
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(cwd, { recursive: true, force: true });
   });
+
+  it("replacing the active provider's apiKey takes effect without re-selecting the model", async () => {
+    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-agent-"));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-cwd-"));
+    const rt = await createDesktopRuntime({ agentDir, cwd });
+    rt.upsertCustomProvider({
+      provider: "ollama",
+      baseUrl: "http://127.0.0.1:11434",
+      api: "openai-completions",
+      modelId: "llama3.1",
+      apiKey: "key-OLD",
+    });
+    rt.selectModel("ollama", "llama3.1"); // 选中模型会把密钥复制进 settings.apiKey
+    const settingsPath = path.join(agentDir, "settings.json");
+    assert.equal(JSON.parse(fs.readFileSync(settingsPath, "utf8")).apiKey, "key-OLD");
+
+    // 替换密钥：models.json 与 settings.apiKey 都要同步，否则请求仍用旧密钥
+    rt.setProviderApiKey("ollama", "key-NEW");
+    assert.equal(rt.getProviderApiKey("ollama").apiKey, "key-NEW");
+    assert.equal(rt.getModelsJsonConfig().providers[0]?.hasApiKeyField, true);
+    assert.equal(JSON.parse(fs.readFileSync(settingsPath, "utf8")).apiKey, "key-NEW");
+
+    // 清除密钥：settings.apiKey 同步移除，避免残留旧密钥继续生效
+    rt.clearProviderApiKey("ollama");
+    assert.equal(rt.getProviderApiKey("ollama").apiKey, undefined);
+    assert.equal("apiKey" in JSON.parse(fs.readFileSync(settingsPath, "utf8")), false);
+
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
 });
 
 describe("session export", () => {

@@ -208,6 +208,8 @@ export function ProvidersPanel(props: {
     { kind: "provider"; provider: string } | { kind: "model"; provider: string; modelId: string } | undefined
   >();
   const [keyDraft, setKeyDraft] = useState("");           // API 密钥输入草稿
+  /** 当前选中供应商已保存的 API 密钥（回显用；未配置为 undefined） */
+  const [savedKey, setSavedKey] = useState<string | undefined>();
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT); // 表单草稿
   const [fetchPicker, setFetchPicker] = useState<FetchPicker | undefined>();
   const [busy, setBusy] = useState(false);                 // 操作进行中标记
@@ -305,6 +307,33 @@ export function ProvidersPanel(props: {
       proxy: custom?.proxy ?? "",
     });
   }, [selected?.id, selected?.custom, selected?.builtin]);
+
+  /** 回显已保存的 API 密钥：选中供应商或配置变更时拉取明文（掩码展示，可点眼睛查看） */
+  useEffect(() => {
+    const providerId = selected?.custom?.provider ?? (selected?.configured ? selected?.id : undefined);
+    if (!providerId) {
+      setSavedKey(undefined);
+      return;
+    }
+    let cancelled = false;
+    void rpc<{ apiKey?: string }>("getProviderApiKey", { provider: providerId })
+      .then((res) => {
+        if (cancelled) return;
+        const key = res.apiKey?.trim() || undefined;
+        setSavedKey(key);
+        setForm((d) => {
+          // 用户正在输入新值时不覆盖；空字段时回显已保存的密钥
+          if (d.apiKey !== "" && d.apiKey !== key) return d;
+          return { ...d, apiKey: key ?? "" };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSavedKey(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.configured, selected?.custom?.provider, config]);
 
   /** 打开添加供应商弹窗，可选预填预设 */
   function openCreate(preset?: Partial<Draft>) {
@@ -681,6 +710,8 @@ export function ProvidersPanel(props: {
     try {
       const next = await rpc<ModelsJsonConfigView>("clearProviderApiKey", { provider });
       setConfig(next);
+      setSavedKey(undefined);
+      setForm((d) => ({ ...d, apiKey: "" }));
       props.onToast(`已清除 ${provider} 的 API 密钥`, "info");
       props.onActiveChanged();
     } catch (err) {
@@ -700,6 +731,7 @@ export function ProvidersPanel(props: {
     }
     setBusy(true);
     try {
+      const apiKeyChanged = Boolean(nextForm.apiKey.trim()) && nextForm.apiKey.trim() !== savedKey;
       const renamed = nextForm.name.trim() && nextForm.name.trim() !== custom.provider;
       const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
         provider: (renamed ? nextForm.name : custom.provider).trim(),
@@ -709,14 +741,17 @@ export function ProvidersPanel(props: {
         modelName: first.name,
         contextWindow: first.contextWindow,
         maxTokens: first.maxTokens,
-        apiKey: nextForm.apiKey.trim() || undefined,
+        apiKey: apiKeyChanged ? nextForm.apiKey.trim() : undefined,
         proxy: nextForm.proxy,
         previousProvider: custom.provider,
         previousModelId: first.id,
       });
       setConfig(next);
       if (renamed) setSelectedId(nextForm.name.trim());
-      setForm((d) => ({ ...d, apiKey: "" }));
+      if (apiKeyChanged) {
+        setSavedKey(nextForm.apiKey.trim());
+        setForm((d) => ({ ...d, apiKey: nextForm.apiKey.trim() }));
+      }
       props.onToast("供应商已保存", "success");
       props.onActiveChanged();
     } catch (err) {
@@ -729,7 +764,7 @@ export function ProvidersPanel(props: {
   async function saveApiKeyInline() {
     if (!selected) return;
     const key = form.apiKey.trim();
-    if (!key) return;
+    if (!key || key === savedKey) return;
     if (selected.custom) {
       setBusy(true);
       try {
@@ -738,7 +773,7 @@ export function ProvidersPanel(props: {
           apiKey: key,
         });
         setConfig(next);
-        setForm((d) => ({ ...d, apiKey: "" }));
+        setSavedKey(key);
         props.onToast(`已保存 ${selected.custom.provider} 的 API 密钥`, "success");
         props.onActiveChanged();
       } catch (err) {
@@ -911,7 +946,7 @@ export function ProvidersPanel(props: {
                     if (selected.configured) void saveProviderMeta(next);
                   }}
                 />
-                <Field label="API Key" hint="仅保存在本地 models.json。已保存的密钥不会回显。">
+                <Field label="API Key" hint="仅保存在本地 models.json。已保存的密钥会回显（默认掩码，点击眼睛可查看明文）。">
                   <div className="prov-secret">
                     <input
                       className="ui-input"

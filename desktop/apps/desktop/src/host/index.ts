@@ -164,6 +164,8 @@ export interface DesktopHost {
   setProviderApiKey(provider: string, apiKey: string): ModelsJsonConfigView;
   /** 清除指定供应商的 API 密钥 */
   clearProviderApiKey(provider: string): ModelsJsonConfigView;
+  /** 读取指定供应商已保存的 API 密钥（UI 回显用；未配置返回 undefined） */
+  getProviderApiKey(provider: string): { provider: string; apiKey: string | undefined };
   /** 列出所有可用模型选项（含配置状态） */
   listModelOptions(): ModelOptionView[];
   /** 选择并激活指定模型 */
@@ -288,6 +290,7 @@ export async function createDesktopHost(opts: {
     removeCustomModel: (provider, modelId) => runtime.removeCustomModel(provider, modelId),
     setProviderApiKey: (provider, apiKey) => runtime.setProviderApiKey(provider, apiKey),
     clearProviderApiKey: (provider) => runtime.clearProviderApiKey(provider),
+    getProviderApiKey: (provider) => runtime.getProviderApiKey(provider),
     listModelOptions: () => runtime.listModelOptions(),
     selectModel: (provider, modelId) => withPreset(runtime.selectModel(provider, modelId)),
     checkForUpdates: () => checkForDesktopUpdate({ currentVersion: VERSION }),

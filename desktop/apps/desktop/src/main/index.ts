@@ -507,6 +507,10 @@ registerRPC("clearProviderApiKey", (params: { provider?: string }) => {
   if (!params?.provider?.trim()) throw new Error("clearProviderApiKey requires provider");
   return requireHost().clearProviderApiKey(params.provider.trim());
 });
+registerRPC("getProviderApiKey", (params: { provider?: string }) => {
+  if (!params?.provider?.trim()) throw new Error("getProviderApiKey requires provider");
+  return requireHost().getProviderApiKey(params.provider.trim());
+});
 registerRPC("selectModel", (params: { provider?: string; modelId?: string }) => {
   if (!params?.provider?.trim() || !params?.modelId?.trim()) {
     throw new Error("selectModel requires provider and modelId");

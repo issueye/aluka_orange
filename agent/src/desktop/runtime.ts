@@ -37,6 +37,7 @@ import {
 import {
   previewModelsJson,
   readModelsJsonConfig,
+  readProviderApiKey,
   upsertCustomProviderInModelsJson,
   removeCustomProviderFromModelsJson,
   removeCustomModelFromModelsJson,
@@ -294,6 +295,8 @@ export interface DesktopRuntime {
   removeCustomModel(provider: string, modelId: string): ModelsJsonConfigView;
   setProviderApiKey(provider: string, apiKey: string): ModelsJsonConfigView;
   clearProviderApiKey(provider: string): ModelsJsonConfigView;
+  /** 读取指定供应商已保存的 API 密钥（UI 回显用；未配置返回 undefined） */
+  getProviderApiKey(provider: string): { provider: string; apiKey: string | undefined };
   /** Composer 模型下拉选项 */
   listModelOptions(): ModelOptionView[];
   /** 选用 models.json 中的 provider/model，并写入 settings */
@@ -762,6 +765,19 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     return resolveRuntimeApiKey({ agentDir, model, apiKey: settings.apiKey });
   }
 
+  /**
+   * 供应商 API 密钥变更时同步 settings.apiKey（resolveKey 以 settings.apiKey 优先），
+   * 否则替换 models.json 里的 key 后，请求仍会沿用选中模型时缓存的旧密钥。
+   */
+  function syncActiveApiKey(providerId: string, apiKey?: string): void {
+    if (!providerId || model.provider !== providerId) return;
+    const next = { ...settings };
+    // 清除时显式传 undefined：saveSettings 先 loadSettings 再合并，delete 无法覆盖磁盘旧值
+    next.apiKey = apiKey ?? undefined;
+    if (next.apiKey === settings.apiKey) return;
+    settings = saveSettings(next, agentDir);
+  }
+
   function replaceModel(next: typeof model) {
     model.id = next.id;
     model.name = next.name;
@@ -1088,7 +1104,11 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       return readModelsJsonConfig(agentDir);
     },
     upsertCustomProvider(input) {
-      return upsertCustomProviderInModelsJson(agentDir, input);
+      const next = upsertCustomProviderInModelsJson(agentDir, input);
+      if (typeof input.apiKey === "string" && input.apiKey.trim()) {
+        syncActiveApiKey(input.previousProvider ?? input.provider, input.apiKey.trim());
+      }
+      return next;
     },
     addProviderModels(input) {
       return addModelsToProviderInModelsJson(agentDir, input);
@@ -1109,10 +1129,17 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       return removeCustomModelFromModelsJson(agentDir, provider, modelId);
     },
     setProviderApiKey(provider, apiKey) {
-      return setProviderApiKeyInModelsJson(agentDir, provider, apiKey);
+      const next = setProviderApiKeyInModelsJson(agentDir, provider, apiKey);
+      syncActiveApiKey(provider, apiKey);
+      return next;
     },
     clearProviderApiKey(provider) {
-      return clearProviderApiKeyInModelsJson(agentDir, provider);
+      const next = clearProviderApiKeyInModelsJson(agentDir, provider);
+      syncActiveApiKey(provider);
+      return next;
+    },
+    getProviderApiKey(provider) {
+      return { provider, apiKey: readProviderApiKey(agentDir, provider) };
     },
     listModelOptions() {
       return listModelOptions(agentDir);
