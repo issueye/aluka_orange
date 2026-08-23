@@ -48,3 +48,20 @@ describe("SSE abort behavior", () => {
     expect(frames).toEqual([]);
   });
 });
+
+describe("SSE defensive reads", () => {
+  it("treats read() resolving undefined as stream end (runtime quirk)", async () => {
+    // 模拟 aluka 运行时对已结束流的 read() 返回 undefined
+    const fakeBody = {
+      getReader: () => ({
+        read: async () => undefined,
+      }),
+    } as unknown as ReadableStream<Uint8Array>;
+
+    const frames: string[] = [];
+    for await (const frame of readSseEvents(fakeBody)) {
+      frames.push(frame.data);
+    }
+    expect(frames).toEqual([]);
+  });
+});

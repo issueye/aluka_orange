@@ -123,6 +123,7 @@ export async function* readSseEvents(
         if (signal?.aborted) return; // 中止引发的读取错误：自然结束
         throw reason;
       }
+      if (!readResult) return; // 部分运行时会话对已结束流 read() 返回 undefined：视同 done
       const { done, value } = readResult;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
