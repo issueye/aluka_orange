@@ -96,3 +96,32 @@ describe("example pi plugins", () => {
     }
   });
 });
+
+  it("loads tavily.ts extension with web_search tool", async () => {
+    const file = path.resolve("examples/extensions/tavily.ts");
+    const loaded = await loadExtensions({
+      cwd: process.cwd(),
+      extraPaths: [file],
+      extraPathsOnly: true,
+    });
+    expect(loaded.errors, JSON.stringify(loaded.errors)).toEqual([]);
+    const runner = new ExtensionRunner(loaded.extensions, loaded.runtime, process.cwd(), "print");
+    runner.bind();
+    const names = runner.getActiveToolNames();
+    expect(names).toContain("web_search");
+    // 无 key 时返回友好提示（不依赖网络）
+    const ctx = runner.createContext();
+    const tool = runner.wrapTool(
+      runner.getRegisteredTools().find((item) => item.definition.name === "web_search")!.definition,
+      ctx,
+    );
+    const prevKey = process.env.TAVILY_API_KEY;
+    delete process.env.TAVILY_API_KEY;
+    try {
+      const result = await tool.execute("1", { query: "aluka" }, undefined, undefined);
+      expect(String(result.content[0]?.text ?? "")).toContain("TAVILY_API_KEY");
+    } finally {
+      if (prevKey === undefined) delete process.env.TAVILY_API_KEY;
+      else process.env.TAVILY_API_KEY = prevKey;
+    }
+  });
