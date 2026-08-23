@@ -15,6 +15,7 @@ export {
   isLsToolResult,
   isReadToolResult,
   isToolCallEventType,
+  isWebFetchToolResult,
   isWriteToolResult,
   // 事件类型
   type AgentEndEvent,
@@ -54,6 +55,8 @@ export {
   type ToolDefinition,
   type ToolInfo,
   type ToolResultEvent,
+  type WebFetchToolCallEvent,
+  type WebFetchToolResultEvent,
 } from "./types.ts";
 
 // 事件总线

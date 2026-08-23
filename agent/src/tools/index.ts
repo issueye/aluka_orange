@@ -8,6 +8,7 @@
 import { bashTool } from "./bash.ts";
 import { editTool, readTool, writeTool } from "./files.ts";
 import { findTool, grepTool, lsTool } from "./search.ts";
+import { webFetchTool } from "./web_fetch.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 
 /** 所有内置工具的有序列表 */
@@ -19,6 +20,7 @@ export const builtinTools: ToolDefinition[] = [
   grepTool,   // 正则搜索文件内容
   findTool,   // 按名称查找文件
   lsTool,     // 列出目录内容
+  webFetchTool, // 抓取网页/API 并抽取可读文本
 ];
 
-export { bashTool, editTool, findTool, grepTool, lsTool, readTool, writeTool };
+export { bashTool, editTool, findTool, grepTool, lsTool, readTool, webFetchTool, writeTool };

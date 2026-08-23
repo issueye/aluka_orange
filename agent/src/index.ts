@@ -91,8 +91,8 @@ export {
   type TimelineItem,
 } from "./desktop/index.ts";
 
-// 内置工具（文件读写、编辑、搜索、Shell 执行等）
-export { builtinTools, readTool, writeTool, editTool, bashTool, grepTool, findTool, lsTool } from "./tools/index.ts";
+// 内置工具（文件读写、编辑、搜索、Shell 执行、网页抓取等）
+export { builtinTools, readTool, writeTool, editTool, bashTool, grepTool, findTool, lsTool, webFetchTool } from "./tools/index.ts";
 
 // 技能系统（从 Markdown 文件加载提示词技能）
 export { loadSkills, formatSkillsForPrompt } from "./skills/index.ts";

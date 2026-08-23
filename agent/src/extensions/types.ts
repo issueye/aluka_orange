@@ -546,6 +546,10 @@ export interface LsToolCallEvent extends ToolCallEventBase {
   toolName: "ls";
   input: { path?: string };
 }
+export interface WebFetchToolCallEvent extends ToolCallEventBase {
+  toolName: "web_fetch";
+  input: { url: string; maxChars?: number; extractMode?: string; timeout?: number; headers?: Record<string, string> };
+}
 export interface CustomToolCallEvent extends ToolCallEventBase {
   toolName: string;
   input: Record<string, unknown>;
@@ -558,6 +562,7 @@ export type ToolCallEvent =
   | GrepToolCallEvent
   | FindToolCallEvent
   | LsToolCallEvent
+  | WebFetchToolCallEvent
   | CustomToolCallEvent;
 
 interface ToolResultEventBase {
@@ -596,6 +601,10 @@ export interface LsToolResultEvent extends ToolResultEventBase {
   toolName: "ls";
   details: unknown;
 }
+export interface WebFetchToolResultEvent extends ToolResultEventBase {
+  toolName: "web_fetch";
+  details: unknown;
+}
 export interface CustomToolResultEvent extends ToolResultEventBase {
   toolName: string;
   details: unknown;
@@ -608,6 +617,7 @@ export type ToolResultEvent =
   | GrepToolResultEvent
   | FindToolResultEvent
   | LsToolResultEvent
+  | WebFetchToolResultEvent
   | CustomToolResultEvent;
 
 export function isBashToolResult(e: ToolResultEvent): e is BashToolResultEvent {
@@ -631,6 +641,9 @@ export function isFindToolResult(e: ToolResultEvent): e is FindToolResultEvent {
 export function isLsToolResult(e: ToolResultEvent): e is LsToolResultEvent {
   return e.toolName === "ls";
 }
+export function isWebFetchToolResult(e: ToolResultEvent): e is WebFetchToolResultEvent {
+  return e.toolName === "web_fetch";
+}
 
 export function isToolCallEventType(toolName: "bash", event: ToolCallEvent): event is BashToolCallEvent;
 export function isToolCallEventType(toolName: "read", event: ToolCallEvent): event is ReadToolCallEvent;
@@ -639,6 +652,7 @@ export function isToolCallEventType(toolName: "write", event: ToolCallEvent): ev
 export function isToolCallEventType(toolName: "grep", event: ToolCallEvent): event is GrepToolCallEvent;
 export function isToolCallEventType(toolName: "find", event: ToolCallEvent): event is FindToolCallEvent;
 export function isToolCallEventType(toolName: "ls", event: ToolCallEvent): event is LsToolCallEvent;
+export function isToolCallEventType(toolName: "web_fetch", event: ToolCallEvent): event is WebFetchToolCallEvent;
 export function isToolCallEventType<TName extends string, TInput extends Record<string, unknown>>(
   toolName: TName,
   event: ToolCallEvent,
