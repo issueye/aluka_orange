@@ -120,4 +120,24 @@ describe("SessionManager tree format", () => {
     assert.equal(session.buildSessionContext().messages[0]?.role, "user");
     assert.equal(session.isPersisted(), false);
   });
+
+  it("fires onAppend hook per entry (desktop custom-entry bridge)", () => {
+    const dir = tmpDir();
+    const session = SessionManager.create(dir, "demo.jsonl", dir);
+    const seen: Array<{ type: string; customType?: string }> = [];
+    session.onAppend = (entry) => {
+      seen.push({
+        type: entry.type,
+        customType: (entry as { customType?: string }).customType,
+      });
+    };
+    session.appendCustomEntry("my-plugin/status", { ok: true });
+    session.appendSessionInfo("renamed");
+    assert.equal(seen.length, 2);
+    assert.equal(seen[0]?.type, "custom");
+    assert.equal(seen[0]?.customType, "my-plugin/status");
+    assert.equal(seen[1]?.type, "session_info");
+    assert.equal(session.getEntries().length >= 2, true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

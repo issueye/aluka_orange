@@ -22,6 +22,15 @@ export default defineConfig({
   // 使用相对路径，适配 WebView2 加载
   base: "./",
   plugins: [react()],
+  resolve: {
+    alias: {
+      // 壳层插件契约单一来源：agent/src/extensions/contracts/shell.ts（纯 TS，无 node 依赖）
+      "@aluka/shell-contracts": path.resolve(
+        import.meta.dirname,
+        "../../../agent/src/extensions/contracts/shell.ts",
+      ),
+    },
+  },
   server: {
     port: Number.parseInt(process.env.ALUKA_VITE_PORT ?? "5173", 10) || 5173,
     proxy: {

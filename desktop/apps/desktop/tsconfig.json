@@ -15,7 +15,12 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@aluka/shell-contracts": [
+        "../../../agent/src/extensions/contracts/shell.ts"
+      ]
+    }
   },
   "include": [
     "src/ui/**/*.ts",

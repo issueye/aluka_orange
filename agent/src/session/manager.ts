@@ -114,6 +114,9 @@ export class SessionManager {
   private labelTimestampsById = new Map<string, string>();
   private leafId: string | null = null;
 
+  /** 追加钩子：宿主监听新条目（如桌面端 custom 条目实时桥接）；由宿主在会话挂接后设置 */
+  onAppend?: (entry: SessionEntry) => void;
+
   private constructor(cwd: string, sessionDir: string, sessionFile: string | undefined, persist: boolean, options?: NewSessionOptions) {
     this.cwd = path.resolve(cwd);
     this.sessionDir = sessionDir ? path.resolve(sessionDir) : "";
@@ -615,6 +618,7 @@ export class SessionManager {
       fs.mkdirSync(path.dirname(this.sessionFile), { recursive: true });
       fs.appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
     }
+    this.onAppend?.(entry);
   }
 
   private rewriteFile(): void {

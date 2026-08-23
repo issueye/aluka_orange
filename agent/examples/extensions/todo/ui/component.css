@@ -1,0 +1,98 @@
+/**
+ * TODO 插件组件样式（与 ui/Component.tsx 同目录）
+ *
+ * SSR 渲染时由宿主自动读取并注入 <style> 到组件 HTML 片段；
+ * 只消费宿主 CSS token（--border / --foreground / --surface-soft 等）。
+ */
+
+.aluka-plugin-todo {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  width: min(100%, var(--thread-max));
+  margin: 0 auto 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.aluka-plugin-todo__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aluka-plugin-todo__title {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.aluka-plugin-todo__action {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.aluka-plugin-todo__action:hover {
+  background: var(--hover-fill);
+}
+
+.aluka-plugin-todo__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.aluka-plugin-todo__item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.aluka-plugin-todo__state {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.aluka-plugin-todo__item.is-done .aluka-plugin-todo__state {
+  color: var(--success);
+}
+
+.aluka-plugin-todo__item.is-done .aluka-plugin-todo__text {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.aluka-plugin-todo__item.is-error .aluka-plugin-todo__state {
+  color: var(--danger);
+}
+
+.aluka-plugin-todo__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aluka-plugin-todo__desc {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.aluka-plugin-todo__empty {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}

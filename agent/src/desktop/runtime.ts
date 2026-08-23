@@ -13,9 +13,10 @@ import { getAgentDir, getSessionsDir } from "../config.ts";
 import { createEventBus } from "../extensions/event-bus.ts";
 import { createExtensionRuntime, loadExtensions } from "../extensions/loader.ts";
 import { ExtensionRunner } from "../extensions/runner.ts";
-import type { ToolDefinition, UiContribution } from "../extensions/types.ts";
+import type { ToolDefinition, UiContribution, SlotData } from "../extensions/types.ts";
+import type { ShellSlot } from "../extensions/contracts/shell.ts";
 import { resolveRuntimeApiKey, resolveRuntimeModel } from "../models.ts";
-import { SessionManager, type SessionSummary } from "../session/manager.ts";
+import { SessionManager, type CustomEntry, type SessionSummary } from "../session/manager.ts";
 import { killTrackedChildren } from "../process-children.ts";
 import { loadPrompts } from "../prompts/index.ts";
 import { loadSkills, type Skill } from "../skills/index.ts";
@@ -111,7 +112,8 @@ export type DesktopRuntimeEvent =
   | { type: "tool_end"; sessionId: string; toolCallId: string; toolName: string; isError: boolean; resultText: string }
   | { type: "error"; sessionId: string; message: string }
   | { type: "extension_ui"; request: ExtensionUiRequest }
-  | { type: "usage"; sessionId: string; usage: SessionUsageView };
+  | { type: "usage"; sessionId: string; usage: SessionUsageView }
+  | { type: "entry_added"; sessionId: string; customType: string; data?: unknown };
 
 /** 用户输入携带的图片附件（Base64 数据 + MIME 类型） */
 export interface PromptImage {
@@ -145,7 +147,7 @@ export interface CreateDesktopRuntimeOptions {
 
 export interface TimelineItem {
   id: string;
-  role: "user" | "assistant" | "tool" | "system";
+  role: "user" | "assistant" | "tool" | "system" | "custom";
   text: string;
   /** 用户消息携带的图片附件（base64 + MIME） */
   images?: PromptImage[];
@@ -156,6 +158,9 @@ export interface TimelineItem {
   resultText?: string;
   isError?: boolean;
   toolStatus?: "running" | "done" | "error";
+  /** 自定义时间链条目（appendEntry 链路）：customType 标识 + 数据 */
+  customType?: string;
+  customData?: unknown;
 }
 
 export interface ExtensionListItem {
@@ -232,8 +237,31 @@ export interface DesktopRuntime {
   /** 退出前中止请求并杀掉跟踪的子进程 */
   dispose(): void;
   listExtensions(): ExtensionInventory;
-  /** 扩展声明的 UI 贡献（v1 声明式；含加载期告警） */
+  /** 扩展声明的 UI 贡献（v1/v2 声明式；含加载期告警） */
   listUiContributions(): { contributions: UiContribution[]; warnings: string[] };
+  /**
+   * 槽位 T0 数据（contributesData 提供者；同步契约，异常回退静态元数据）。
+   * 注意：GUI 桥不 await Promise（主进程注释），本类 RPC 必须同步返回。
+   */
+  getSlotData(slot: string, contributionId: string): {
+    ok: boolean;
+    data?: SlotData;
+    error?: string;
+  };
+  /**
+   * 组件档模块路径（uiModule 相对插件根解析；供主进程 SSR 加载）
+   */
+  getPluginComponentModule(contributionId: string): {
+    ok: boolean;
+    path?: string;
+    error?: string;
+  };
+  /** 用户环境变量清单（settings.json envVars 段；已注入 process.env） */
+  listEnvVars(): Record<string, string>;
+  /** 设置环境变量（持久化 + 注入当前进程 process.env） */
+  setEnvVar(key: string, value: string): void;
+  /** 删除环境变量（从 settings.json 和 process.env 中移除） */
+  removeEnvVar(key: string): void;
   listSkills(): SkillListItem[];
   /** 提示词片段清单（.aluka/prompts 下的 Markdown，供插入输入框） */
   listPrompts(): PromptListItem[];
@@ -423,6 +451,26 @@ function timelineFromHistory(messages: AgentMessage[]): TimelineItem[] {
   return items;
 }
 
+/** custom 会话条目（appendEntry 链路）→ 时间线项 */
+function customTimelineItems(session: SessionManager): TimelineItem[] {
+  const entries = session
+    .getEntries()
+    .filter((entry): entry is CustomEntry => entry.type === "custom");
+  return entries.map((entry) => ({
+    id: `custom-${entry.id}`,
+    role: "custom" as const,
+    text: "",
+    customType: entry.customType,
+    customData: entry.data,
+    timestamp: entry.timestamp ? Date.parse(entry.timestamp) : Date.now(),
+  }));
+}
+
+/** 当前时间线 = history 消息 + custom 条目（appendEntry 链路的桌面投影） */
+function currentTimeline(session: SessionManager, hist: AgentMessage[]): TimelineItem[] {
+  return [...timelineFromHistory(hist), ...customTimelineItems(session)];
+}
+
 function historyFromSession(session: SessionManager): AgentMessage[] {
   return [...session.buildSessionContext().messages];
 }
@@ -483,6 +531,21 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     void emitDesktop({ type: "extension_ui", request });
   });
 
+  /** 为会话挂接追加钩子：custom 条目实时投影为 entry_added 事件 */
+  function wireSession(next: SessionManager): SessionManager {
+    next.onAppend = (entry) => {
+      if (entry.type !== "custom") return;
+      const custom = entry as CustomEntry;
+      void emitDesktop({
+        type: "entry_added",
+        sessionId: next.id,
+        customType: custom.customType,
+        data: custom.data,
+      });
+    };
+    return next;
+  }
+
   let loaded = await loadExtensions({
     cwd,
     extraPaths: resolveExtraPaths(cwd, settings, opts),
@@ -493,7 +556,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   }));
   const sessionDir = () => getSessionsDir(cwd, agentDir);
 
-  let session = SessionManager.inMemory(cwd);
+  let session = wireSession(SessionManager.inMemory(cwd));
   let history: AgentMessage[] = [];
   /** 正在运行的会话（sessionId → AbortController），支持多会话并行执行 */
   const activeRuns = new Map<string, AbortController>();
@@ -568,7 +631,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
 
   const restored = tryRestoreSession();
   if (restored) {
-    session = restored;
+    session = wireSession(restored);
     history = historyFromSession(session);
   }
 
@@ -606,7 +669,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
 
   function bindDraftSession(): OpenedSession {
     history = [];
-    session = SessionManager.inMemory(cwd);
+    session = wireSession(SessionManager.inMemory(cwd));
     persistSessionPointer();
     tools = rebuildTools();
     return { id: "", file: "", cwd, timeline: [] };
@@ -614,7 +677,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
 
   function ensurePersistedSession() {
     if (session.isPersisted() && session.getSessionFile()) return;
-    session = SessionManager.create(sessionDir(), undefined, cwd);
+    session = wireSession(SessionManager.create(sessionDir(), undefined, cwd));
     persistSessionPointer();
     tools = rebuildTools();
   }
@@ -651,7 +714,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
   }
 
   function bindSession(next: SessionManager) {
-    session = next;
+    session = wireSession(next);
     history = historyFromSession(session);
     runner.setThinkingLevel(coerceThinkingLevel(session.buildSessionContext().thinkingLevel));
     persistSessionPointer();
@@ -660,7 +723,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       id: session.id,
       file: session.file,
       cwd,
-      timeline: timelineFromHistory(history),
+      timeline: currentTimeline(session, history),
     };
   }
 
@@ -676,7 +739,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     applyWorkspace(dir);
     if (mode === "new") {
       history = [];
-      session = SessionManager.create(sessionDir(), undefined, cwd);
+      session = wireSession(SessionManager.create(sessionDir(), undefined, cwd));
       persistSessionPointer();
       tools = rebuildTools();
       return { id: session.id, file: session.file, cwd, timeline: [] };
@@ -835,7 +898,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     createSession(opts) {
       if (opts?.cwd) applyWorkspace(opts.cwd);
       history = [];
-      session = SessionManager.create(sessionDir(), undefined, cwd);
+      session = wireSession(SessionManager.create(sessionDir(), undefined, cwd));
       persistSessionPointer();
       tools = rebuildTools();
       return { id: session.id, file: session.file, cwd };
@@ -858,14 +921,14 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         id: session.id,
         file: session.file,
         cwd,
-        timeline: timelineFromHistory(history),
+        timeline: currentTimeline(session, history),
       };
     },
     getActiveSessionId() {
       return session.isPersisted() && session.getSessionFile() ? session.id : undefined;
     },
     getTimeline() {
-      return timelineFromHistory(history);
+      return currentTimeline(session, history);
     },
     isBusy() {
       return activeRuns.has(session.id);
@@ -899,18 +962,75 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
             continue;
           }
           seen.add(ui.id);
-          contributions.push({
+          const base = {
             id: ui.id,
-            version: ui.version,
             title: ui.title,
             description: ui.description,
             icon: ui.icon,
             command: ui.command,
             url: ui.url,
-          });
+          };
+          contributions.push(
+            ui.version === 2
+              ? {
+                  ...base,
+                  version: 2,
+                  slot: ui.slot,
+                  order: ui.order,
+                  when: ui.when,
+                  uiModule: ui.uiModule,
+                  uiVersion: ui.uiVersion,
+                  permissions: ui.permissions,
+                  settings: ui.settings,
+                }
+              : { ...base, version: 1 },
+          );
         }
       }
       return { contributions, warnings };
+    },
+    getSlotData(slot, contributionId) {
+      for (const ext of loaded.extensions) {
+        const provider = ext.slotData.get(contributionId);
+        if (!provider) continue;
+        try {
+          const data = provider({ slot: slot as ShellSlot, cwd, id: contributionId });
+          return { ok: true, data };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      }
+      return { ok: false, error: `slot data provider not found: ${contributionId}` };
+    },
+    getPluginComponentModule(contributionId) {
+      for (const ext of loaded.extensions) {
+        const ui = ext.uiContributions.find(
+          (item) => item.id === contributionId && item.version === 2 && item.uiModule,
+        );
+        if (!ui || ui.version !== 2) continue;
+        const modulePath = path.resolve(path.dirname(ext.path), ui.uiModule!);
+        if (!fs.existsSync(modulePath)) {
+          return { ok: false, error: `uiModule 不存在：${modulePath}` };
+        }
+        return { ok: true, path: modulePath };
+      }
+      return { ok: false, error: `component module not found: ${contributionId}` };
+    },
+    listEnvVars() {
+      return { ...settings.envVars };
+    },
+    setEnvVar(key: string, value: string) {
+      if (!settings.envVars) settings.envVars = {};
+      settings.envVars[key] = value;
+      process.env[key] = value;
+      saveSettings(settings, agentDir);
+    },
+    removeEnvVar(key: string) {
+      if (settings.envVars) {
+        delete settings.envVars[key];
+        saveSettings(settings, agentDir);
+      }
+      delete process.env[key];
     },
     listSkills() {
       return skillItems(loadSkills(cwd));
@@ -1054,7 +1174,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         id: session.id,
         file: session.file,
         cwd,
-        timeline: timelineFromHistory(history),
+        timeline: currentTimeline(session, history),
       };
     },
     async prompt(text, images) {

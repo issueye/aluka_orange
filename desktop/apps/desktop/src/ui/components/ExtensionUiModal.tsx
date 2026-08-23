@@ -4,15 +4,10 @@
  * 本组件只负责渲染与应答回调；视觉基座复用通用 Dialog 组件。
  */
 import { Button, Dialog, Input } from "./index.ts";
-import type { ExtensionUiRequest } from "../types.ts";
+import type { ExtensionUiRequest, ExtensionUiResponse } from "../types.ts";
 
 /** 需要模态呈现的请求（notify 走 Toast，不进弹窗） */
 export type ModalRequest = Extract<ExtensionUiRequest, { kind: "confirm" | "select" | "input" }>;
-
-export type ExtensionUiResponse =
-  | { id: string; kind: "confirm"; value: boolean }
-  | { id: string; kind: "select"; value?: string }
-  | { id: string; kind: "input"; value?: string };
 
 export function ExtensionUiModal(props: {
   request: ModalRequest;

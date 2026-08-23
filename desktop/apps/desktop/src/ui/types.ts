@@ -14,8 +14,8 @@ export type TimelineImage = {
 /** 时间线消息项：对话中的一条消息 */
 export type TimelineItem = {
   id: string;
-  /** 消息角色：用户/助手/工具/系统 */
-  role: "user" | "assistant" | "tool" | "system";
+  /** 消息角色：用户/助手/工具/系统/自定义（扩展 appendEntry） */
+  role: "user" | "assistant" | "tool" | "system" | "custom";
   text: string;
   /** 用户消息携带的图片附件 */
   images?: TimelineImage[];
@@ -27,6 +27,9 @@ export type TimelineItem = {
   resultText?: string;
   isError?: boolean;
   toolStatus?: "running" | "done" | "error";
+  /** 自定义时间链条目（appendEntry 链路，role === "custom"） */
+  customType?: string;
+  customData?: unknown;
 };
 
 /** 输入框待发送的图片附件（含预览用 dataUrl） */
@@ -68,6 +71,8 @@ export type SettingsView = {
   workspaces?: string[];
   /** 侧栏宽度（px）；未设置时用默认 288 */
   sidebarWidth?: number;
+  /** 插件设置（settings.section 贡献写入；key 形如 `<plugin-id>.<key>`） */
+  pluginSettings?: Record<string, unknown>;
 };
 
 /** 模型选项：供模型选择器下拉列表使用 */
@@ -151,25 +156,25 @@ export type ExtensionUiRequest =
   | { id: string; kind: "select"; title: string; options: string[] }
   | { id: string; kind: "input"; title: string; placeholder?: string };
 
+/** 扩展 UI 响应（confirm/select/input 的应答回填） */
+export type ExtensionUiResponse =
+  | { id: string; kind: "confirm"; value: boolean }
+  | { id: string; kind: "select"; value?: string }
+  | { id: string; kind: "input"; value?: string };
+
 /** Toast 通知项（level：成功/信息/警告/错误） */
 export type Toast = { id: number; message: string; level: "success" | "info" | "warning" | "error" };
 
 /** 顶层视图切换状态（内置视图 + 运行时注册的插件视图 id，`plugin:<id>`） */
 export type ShellView = "chat" | "settings" | "extensions" | (string & {});
 
-/** 扩展 UI 贡献（listUiContributions RPC 结果条目，v1 声明式） */
-export type UiContribution = {
-  id: string;
-  version: 1;
-  title: string;
-  description?: string;
-  /** lucide 图标名（宿主白名单映射，未知回退拼图图标） */
-  icon?: string;
-  /** 关联 slash 命令：面板「运行命令」把 /command 预填到输入框 */
-  command?: string;
-  /** 外部链接 */
-  url?: string;
-};
+/** 扩展 UI 贡献（listUiContributions RPC 结果条目；单一来源：@aluka/shell-contracts） */
+export type {
+  UiContribution,
+  UiContributionV1,
+  UiContributionV2,
+  ShellSlot,
+} from "@aluka/shell-contracts";
 
 /** 技能条目（listSkills RPC 结果） */
 export type SkillItem = { name: string; description: string; path: string };

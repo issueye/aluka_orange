@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BookOpen, MessageSquareText, Search, Wrench } from "lucide-react";
 import { rpc, bridge } from "../bridge.ts";
 import { Button, Spinner } from "../components/index.ts";
+import { ExtensionContributionsPanel } from "./ExtensionContributionsPanel.tsx";
 import type { PromptItem, SkillItem } from "../types.ts";
 
 /** 已加载扩展清单条目 */
@@ -198,6 +199,7 @@ export function ExtensionsView(props: { onBack: () => void }) {
 
           {tab === "tools" ? (
             <div className="ext-tab-body">
+              <ExtensionContributionsPanel />
               <section className="settings-section-block">
                 <h2 className="settings-section-label">已加载扩展（当前目录）</h2>
                 <ul className="inv-list">

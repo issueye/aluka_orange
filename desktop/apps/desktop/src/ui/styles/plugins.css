@@ -1,0 +1,207 @@
+/**
+ * 壳层槽位与插件模板样式
+ *
+ * 插件模板类统一前缀 aluka-plugin-*（作者约束，见 external-plugin-spec.md §6.2）；
+ * 只消费 styles.css 已定义的 CSS token（--border / --foreground / --surface-panel …）。
+ */
+
+/* 槽位容器：不引入布局盒，让内置与插件内容融入宿主 flex 上下文；
+   注意 .slot 不设 display（避免覆盖 sidebar-foot/thread-actions 自身的布局） */
+.slot {
+  min-width: 0;
+}
+
+/* 状态栏槽位：wrapper 归零，保住 status-pill 的 flex 上下文（margin-top:auto 等） */
+.slot--statusbar {
+  display: contents;
+}
+
+/* 状态栏徽章：左对齐，不被 flex column 撑满整条 */
+.slot--statusbar .aluka-plugin-badge {
+  align-self: flex-start;
+}
+
+/* 内置内容包一层：融入宿主的 flex/列布局 */
+.sidebar-foot-inner {
+  display: contents;
+}
+
+.aluka-plugin-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: var(--radius-sm);
+}
+
+/* badge：状态 / 计数 chip */
+.aluka-plugin-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+  color: var(--foreground);
+  white-space: nowrap;
+}
+.aluka-plugin-badge.is-success {
+  color: var(--success);
+}
+.aluka-plugin-badge.is-warning {
+  color: var(--warning);
+}
+.aluka-plugin-badge.is-error {
+  color: var(--danger);
+}
+
+/* link：外链 */
+.aluka-plugin-link {
+  color: var(--link);
+  text-decoration: none;
+  padding: 2px 6px;
+}
+.aluka-plugin-link:hover {
+  text-decoration: underline;
+}
+
+/* button：触发 slash 命令 */
+.aluka-plugin-button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.aluka-plugin-button:hover {
+  background: var(--hover-fill);
+}
+.aluka-plugin-button small {
+  color: var(--muted-foreground);
+}
+
+/* card：标题 + 描述 + 可选动作（适用于空态/面板区槽位） */
+.aluka-plugin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  border-radius: var(--radius-md);
+  min-width: 180px;
+  max-width: 280px;
+}
+.aluka-plugin-card__title {
+  font-weight: 600;
+  font-size: 12px;
+}
+.aluka-plugin-card__desc {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.aluka-plugin-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.aluka-plugin-card__actions button,
+.aluka-plugin-card__actions a {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--link);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* compact-row：标题 + 单行描述 */
+.aluka-plugin-compact-row {
+  padding: 3px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aluka-plugin-compact-row small {
+  color: var(--muted-foreground);
+}
+
+/* 组件档容器（PluginScan：主进程 SSR 片段注入点） */
+.aluka-plugin-scan {
+  min-width: 0;
+}
+.aluka-plugin-scan__loading {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  padding: 4px 8px;
+}
+.aluka-plugin-scan__error {
+  font-size: 11px;
+  color: var(--danger);
+  padding: 4px 8px;
+  border: 1px dashed var(--border);
+}
+.aluka-plugin-scan__fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.aluka-plugin-scan__hint {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+/* @aluka/ui 基元样式已移至 src/main/plugin-ui-kit.css（与组件代码同目录） */
+/* TODO 组件样式已移至插件目录 todo/ui/component.css（SSR 渲染时自动注入） */
+
+/* 槽位容器内的插件卡片（侧栏 foot 下纵向排列时） */
+.slot--sidebar.foot .aluka-plugin-card {
+  align-self: stretch;
+}
+
+/* chat.* 槽位：wrapper 归零，插件内容直接参与聊天区原布局 */
+.slot--chat.empty,
+.slot--chat.composer.before,
+.slot--chat.composer.after,
+.slot--chat.composer.actions,
+.slot--chat.meta {
+  display: contents;
+}
+
+/* 自定义时间链条目气泡（appendEntry 链路，role === "custom"） */
+.bubble.custom {
+  border: 1px solid var(--border);
+  background: var(--tool-bubble);
+}
+.bubble.custom .role {
+  color: var(--link);
+}
+.bubble.custom .bubble-text {
+  color: var(--foreground);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* —— 环境变量管理（设置页） —— */
+.env-row-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.env-row-control .env-value-input {
+  min-width: 200px;
+}
+.env-row-control .env-key-input {
+  min-width: 160px;
+  font-family: var(--mono);
+}
+.env-row-control .env-row-save,
+.env-row-control .env-row-delete {
+  padding: 0 10px;
+  height: 26px;
+  font-size: 11px;
+}

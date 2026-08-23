@@ -47,7 +47,7 @@ describe("pi-compatible extensions", () => {
       `,
     );
 
-    const loaded = await loadExtensions({ cwd, runtime: createExtensionRuntime() });
+    const loaded = await loadExtensions({ cwd, extraPaths: [path.join(extDir, "greet.ts")], runtime: createExtensionRuntime(), extraPathsOnly: true });
     expect(loaded.errors).toEqual([]);
     expect(loaded.extensions).toHaveLength(1);
 
@@ -83,7 +83,7 @@ describe("pi-compatible extensions", () => {
       `,
     );
 
-    const loaded = await loadExtensions({ cwd });
+    const loaded = await loadExtensions({ cwd, extraPaths: [path.join(extDir, "block.ts")], extraPathsOnly: true });
     expect(loaded.errors).toEqual([]);
     const runner = new ExtensionRunner(loaded.extensions, loaded.runtime, cwd, "print");
     runner.bind();
@@ -110,8 +110,58 @@ describe("pi-compatible extensions", () => {
         }
       `,
     );
-    const loaded = await loadExtensions({ cwd });
+    const loaded = await loadExtensions({ cwd, extraPaths: [path.join(extDir, "typed.ts")], extraPathsOnly: true });
     expect(loaded.errors).toEqual([]);
     expect(loaded.extensions[0].commands.has("ping")).toBe(true);
+  });
+
+  it("resolves contributesData and stores slot data provider (statusbar 数据通道)", async () => {
+    const cwd = tempDir();
+    const extDir = path.join(cwd, ".aluka", "extensions");
+    fs.mkdirSync(extDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(extDir, "status.ts"),
+      `
+        export default function (pi) {
+          pi.contributes({ id: "st", version: 2, title: "状态", slot: "statusbar" });
+          pi.contributesData("st", ({ cwd, id }) => ({ text: "ok:" + (cwd ?? "-") + ":" + id }));
+        }
+      `,
+    );
+    const loaded = await loadExtensions({ cwd, extraPaths: [path.join(extDir, "status.ts")], runtime: createExtensionRuntime(), extraPathsOnly: true });
+    expect(loaded.errors).toEqual([]);
+    const provider = loaded.extensions[0]?.slotData.get("st");
+    expect(typeof provider).toBe("function");
+    const data = provider!({ slot: "statusbar" as never, id: "st" });
+    expect(data?.text).toContain("ok:");
+    expect(loaded.extensions[0]?.uiContributions[0]?.version).toBe(2);
+  });
+
+  it("reads manifest contributions from aluka-ui.json (manifest 轨)", async () => {
+    const cwd = tempDir();
+    const extDir = path.join(cwd, ".aluka", "extensions");
+    fs.mkdirSync(extDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(extDir, "manifested.ts"),
+      `export default function (pi) { pi.registerCommand("ping", { description: "p", handler: async () => {} }); }`,
+    );
+    fs.writeFileSync(
+      path.join(extDir, "aluka-ui.json"),
+      JSON.stringify({
+        version: 2,
+        contributes: [
+          { id: "manifest-demo", version: 2, title: "清单贡献", slot: "sidebar.top" },
+          { id: "manifest-demo", version: 2, title: "重复", slot: "statusbar" },
+          { id: "bad-slot", version: 2, title: "坏槽位", slot: "nope" },
+        ],
+      }),
+    );
+    const loaded = await loadExtensions({ cwd, extraPaths: [path.join(extDir, "manifested.ts")], runtime: createExtensionRuntime(), extraPathsOnly: true });
+    expect(loaded.errors).toEqual([]);
+    const contributions = loaded.extensions[0]?.uiContributions ?? [];
+    // manifest 轨：有效条目进入；仅 id 重复、非法 slot 被拒
+    expect(contributions).toHaveLength(1);
+    expect(contributions[0]?.id).toBe("manifest-demo");
+    expect(contributions[0]?.slot).toBe("sidebar.top");
   });
 });

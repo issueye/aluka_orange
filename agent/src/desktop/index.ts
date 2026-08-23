@@ -99,3 +99,5 @@ export {
   workspaceDisplayName,
 } from "./workspaces.ts";
 export type { UiContribution } from "../extensions/types.ts";
+export type { SlotData, ShellSlot } from "../extensions/contracts/shell.ts";
+export { SHELL_SLOTS } from "../extensions/contracts/shell.ts";

@@ -44,6 +44,10 @@ export interface DesktopSettings {
   extraExtensions?: string[];
   /** 侧栏宽度（px，220–480）；UI 外观设置写入 */
   sidebarWidth?: number;
+  /** 插件设置（settings.section 贡献写入；key 形如 `<plugin-id>.<key>`） */
+  pluginSettings?: Record<string, unknown>;
+  /** 用户环境变量（UI 管理的键值对；注入 agent 进程 process.env） */
+  envVars?: Record<string, string>;
 }
 
 /** 落盘形态：含 pi 兼容的 extensions[] */

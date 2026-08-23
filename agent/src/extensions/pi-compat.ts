@@ -24,3 +24,6 @@ export function getPiAgentDir(): string {
 export const getAgentDir = getPiAgentDir;
 
 export { CustomEditor } from "../custom-editor.ts";
+
+/** 组件档（内部 SSR）契约类型：ui/Component.tsx 默认导出 PluginComponent 使用 */
+export type { PluginComponent, PluginComponentContext } from "./contracts/shell.ts";

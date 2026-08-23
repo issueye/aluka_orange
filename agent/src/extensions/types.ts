@@ -825,8 +825,17 @@ export interface ExtensionAPI {
     tool: ToolDefinition<TParams, TDetails, TState>,
   ): void;
   registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
-  /** 声明式 UI 贡献（v1：宿主侧栏菜单项 + 声明式面板） */
+  /** 声明式 UI 贡献（v1/v2：宿主槽位/面板） */
   contributes(ui: UiContribution): void;
+  /**
+   * v2 预览：为槽位贡献注册数据提供者（宿主 T0 模板渲染时回调）。
+   * 500ms 超时兜底，异常/超时回退静态元数据；同步返回、无副作用。
+   */
+  contributesData(id: string, provider: SlotDataProvider): void;
+  /** v2 预览：数据主动变更信号（推送通道预留；宿主当前以轮询兜底） */
+  refreshData(id: string): void;
+  /** v2：读取插件设置（settings.section 贡献声明的键；来自 ~/.aluka/agent/settings.json 的 pluginSettings） */
+  getPluginSetting(key: string): unknown;
   registerShortcut(
     shortcut: KeyId,
     options: { description?: string; handler: (ctx: ExtensionContext) => Promise<void> | void },
@@ -910,28 +919,27 @@ export interface Extension {
   commands: Map<string, RegisteredCommand>;
   flags: Map<string, ExtensionFlag>;
   shortcuts: Map<string, ExtensionShortcut>;
-  /** 声明式 UI 贡献（contributes() 收集，v1） */
+  /** 声明式 UI 贡献（contributes() 收集，v1/v2） */
   uiContributions: UiContribution[];
+  /** 槽位数据提供者（contributesData() 收集；getSlotData RPC 消费） */
+  slotData: Map<string, SlotDataProvider>;
 }
 
 /**
- * 扩展 UI 贡献（v1 声明式，见 desktop/docs/http-and-plugin-roadmap.md M4）
- * —— 只描述元数据，不含前端代码；宿主以声明式渲染器呈现。
+ * 扩展 UI 贡献（声明式；契约单一来源：./contracts/shell.ts）
+ * —— v1 只描述元数据；宿主以声明式渲染器呈现。详见 desktop/docs/shell-plugin-design.md
  */
-export interface UiContribution {
-  /** 全局唯一 id（跨扩展重复时后者被拒并告警） */
-  id: string;
-  /** 贡献 schema 版本；宿主不识别的版本整条忽略并告警 */
-  version: 1;
-  title: string;
-  description?: string;
-  /** lucide 图标名（宿主白名单映射，未知回退拼图图标） */
-  icon?: string;
-  /** 关联 slash 命令：面板「运行命令」把 /command 预填到输入框 */
-  command?: string;
-  /** 外部链接（面板「打开链接」） */
-  url?: string;
-}
+import type {
+  UiContribution,
+  UiContributionV1,
+  UiContributionV2,
+  ShellSlot,
+  SlotData,
+  SlotDataProvider,
+} from "./contracts/shell.ts";
+import { SHELL_SLOTS } from "./contracts/shell.ts";
+export type { UiContribution, UiContributionV1, UiContributionV2, ShellSlot, SlotData, SlotDataProvider };
+export { SHELL_SLOTS };
 
 export interface ExtensionRuntime {
   flagValues: Map<string, boolean | string>;

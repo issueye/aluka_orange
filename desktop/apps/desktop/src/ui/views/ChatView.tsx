@@ -11,6 +11,7 @@ import { rpc } from "../bridge.ts";
 import { Button, ImageViewer, LoadingBlock, Markdown, Select, Textarea } from "../components/index.ts";
 import { ContextRing } from "../components/ContextRing.tsx";
 import { ToolCard } from "../ToolCard.tsx";
+import { SlotOutlet } from "../shell/slots.tsx";
 import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
 import type {
   ImageAttachment,
@@ -51,6 +52,19 @@ function formatBubbleTime(timestamp?: number): string {
     });
   } catch {
     return "";
+  }
+}
+
+/** 自定义时间链条目（appendEntry 链路）：数据渲染为文本/JSON 摘要 */
+function summarizeCustom(data?: unknown): string {
+  if (data === undefined) return "（无数据）";
+  if (typeof data === "string") return data;
+  if (typeof data === "number" || typeof data === "boolean") return String(data);
+  try {
+    const text = JSON.stringify(data, null, 2);
+    return text.length > 800 ? `${text.slice(0, 800)}…` : text;
+  } catch {
+    return String(data);
   }
 }
 
@@ -158,7 +172,10 @@ export function ChatView(props: {
           <LoadingBlock text="正在加载会话…" className="timeline-loading" />
         ) : null}
         {isEmptyChat && !props.sessionLoading ? (
-          <div className="chat-empty">
+          <SlotOutlet
+            slot="chat.empty"
+            builtin={
+              <div className="chat-empty">
             {needsWorkspace ? (
               <>
                 <div className="chat-empty-kicker">开始对话</div>
@@ -215,9 +232,19 @@ export function ChatView(props: {
                 </div>
               </>
             )}
-          </div>
+              </div>
+            }
+          />
         ) : null}
         {props.timeline.map((item) => {
+          if (item.role === "custom") {
+            return (
+              <div key={item.id} className="bubble custom">
+                <div className="role">{item.customType || "自定义"}</div>
+                <div className="bubble-text">{summarizeCustom(item.customData)}</div>
+              </div>
+            );
+          }
           if (item.role === "tool") {
             return (
               <div key={item.id} className="bubble tool">
@@ -278,6 +305,8 @@ export function ChatView(props: {
           </div>
         ) : null}
       </div>
+      {/* 输入区上方独立区（composer 卡片外、整宽条带）：插件组件卡挂载点 */}
+      <SlotOutlet slot="chat.composer.before" />
       <div className="composer-wrap" data-aluka-drag="no-drag">
         <form
           className="composer"
@@ -345,8 +374,11 @@ export function ChatView(props: {
               }
             }}
           />
-          <div className="composer-actions">
-            <div className="composer-actions-left">
+          <SlotOutlet
+            slot="chat.composer.actions"
+            builtin={
+              <div className="composer-actions">
+                <div className="composer-actions-left">
               <button
                 type="button"
                 className="icon-btn composer-attach-btn"
@@ -442,16 +474,24 @@ export function ChatView(props: {
                   <ArrowUp size={16} />
                 </Button>
               )}
-            </div>
-          </div>
-        </form>
-        <div className="composer-meta">
-          <div className="usage-chip">{formatUsage(props.usage)}</div>
-          <ContextRing
-            used={props.usage?.contextTokens ?? 0}
-            window={props.usage?.contextWindow ?? 0}
+              </div>
+              </div>
+            }
           />
-        </div>
+          <SlotOutlet slot="chat.composer.after" />
+        </form>
+        <SlotOutlet
+          slot="chat.meta"
+          builtin={
+            <div className="composer-meta">
+              <div className="usage-chip">{formatUsage(props.usage)}</div>
+              <ContextRing
+                used={props.usage?.contextTokens ?? 0}
+                window={props.usage?.contextWindow ?? 0}
+              />
+            </div>
+          }
+        />
       </div>
 
       {viewerSrc ? <ImageViewer src={viewerSrc} onClose={() => setViewerSrc(undefined)} /> : null}

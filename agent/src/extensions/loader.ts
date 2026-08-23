@@ -33,13 +33,97 @@ import type {
   LoadExtensionsResult,
   ProviderConfig,
   RegisteredCommand,
+  SlotDataProvider,
   ToolDefinition,
   UiContribution,
 } from "./types.ts";
 import type { Model, Provider, ThinkingLevel } from "../ai/types.ts";
 import { applyRuntimeProviderRegistrations, unregisterProviderEntry } from "../providers/registry.ts";
+import { settingsPath } from "../desktop/settings.ts";
+import { SHELL_SLOTS, type ShellSlot } from "./contracts/shell.ts";
 
 const require = createRequire(import.meta.url);
+
+/**
+ * 校验 UI 贡献条目（代码轨 contributes 与 manifest 轨 aluka-ui.json 共用）。
+ * 返回问题列表（空 = 通过）；不弹异常、不抛错。
+ */
+function checkUiContribution(ui: unknown): string[] {
+  const problems: string[] = [];
+  if (!ui || typeof ui !== "object") {
+    problems.push("参数须为对象");
+    return problems;
+  }
+  const candidate = ui as Partial<UiContribution> & Record<string, unknown>;
+  if (typeof candidate.id !== "string" || !candidate.id.trim()) problems.push("缺少 id");
+  if (typeof candidate.title !== "string" || !candidate.title.trim()) problems.push("缺少 title");
+  const version = candidate.version;
+  if (version !== 1 && version !== 2) problems.push(`不支持的 version：${String(version)}（当前支持 1、2）`);
+  if (version === 2 && !SHELL_SLOTS.includes(candidate.slot as ShellSlot)) {
+    problems.push(`非法的 slot：${String(candidate.slot)}（白名单见 contracts/shell.ts）`);
+  }
+  // settings 声明校验：key 前缀 + 条目形状（仅 v2）
+  if (version === 2 && candidate.settings !== undefined) {
+    const schema = candidate.settings;
+    if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+      problems.push("settings 须为对象（ConfigSchema）");
+    } else {
+      const id = String(candidate.id ?? "");
+      for (const [key, entry] of Object.entries(schema)) {
+        if (!key.startsWith(`${id}.`)) {
+          problems.push(`settings 键必须以 "${id}." 前缀命名：${key}`);
+          continue;
+        }
+        const e = entry as { type?: unknown; label?: unknown; options?: unknown };
+        if (e?.type !== "boolean" && e?.type !== "string" && e?.type !== "number" && e?.type !== "select") {
+          problems.push(`settings.${key}.type 非法（boolean|string|number|select）：${String(e?.type)}`);
+        } else if (typeof e?.label !== "string" || !e.label.trim()) {
+          problems.push(`settings.${key}.label 必填`);
+        }
+        if (e?.type === "select" && !Array.isArray(e?.options)) {
+          problems.push(`settings.${key}.options 必填（select 类型）`);
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * manifest 轨：插件根目录 aluka-ui.json 声明的 UI 贡献。
+ * 先于代码轨执行（同 id 时 manifest 优先，代码轨该 id 注册会被 id 重复校验拒绝）。
+ */
+function loadManifestContributions(extension: Extension, file: string): void {
+  const manifestPath = path.join(path.dirname(file), "aluka-ui.json");
+  if (!fs.existsSync(manifestPath)) return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+      version?: unknown;
+      contributes?: unknown;
+    };
+    if (raw?.version !== 2 || !Array.isArray(raw.contributes)) {
+      console.warn(`[extension] ${manifestPath} 忽略（需 version: 2 与 contributes 数组）`);
+      return;
+    }
+    for (const entry of raw.contributes) {
+      const problems = checkUiContribution(entry);
+      if (problems.length) {
+        console.warn(`[extension] ${manifestPath} 贡献被拒绝：${problems.join("；")}`);
+        continue;
+      }
+      const ui = entry as UiContribution;
+      if (extension.uiContributions.some((item) => item.id === ui.id)) {
+        console.warn(`[extension] ${manifestPath} 贡献 id 重复：${ui.id}（manifest 内）`);
+        continue;
+      }
+      extension.uiContributions.push(ui);
+    }
+  } catch (error) {
+    console.warn(
+      `[extension] ${manifestPath} 解析失败：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 /**
  * 创建扩展运行时实例
@@ -138,15 +222,18 @@ export function createExtensionRuntime(): ExtensionRuntime {
  *
  * 不再扫描 .pi 目录（~/.pi/agent 与 {cwd}/.pi），保持 Aluka 独立。
  */
-export function discoverExtensionPaths(cwd: string, extra: string[] = []): string[] {
+export function discoverExtensionPaths(cwd: string, extra: string[] = [], onlyExtra = false): string[] {
   const fromSettings = readSettingsExtensionPaths(cwd);
   const fromPackages = discoverPackageExtensionPaths({ cwd });
-  const dirs = [
-    path.join(getAgentDir(), "extensions"),
-    path.join(cwd, ".aluka", "extensions"),
-    ...fromSettings,
-    ...extra,
-  ];
+  // onlyExtra：测试/嵌入式场景绕过用户与工作区目录（避免宿主环境耦合）
+  const dirs = onlyExtra
+    ? [...extra]
+    : [
+        path.join(getAgentDir(), "extensions"),
+        path.join(cwd, ".aluka", "extensions"),
+        ...fromSettings,
+        ...extra,
+      ];
   const files: string[] = [];
   for (const dir of dirs) {
     files.push(...collectExtensionFiles(dir));
@@ -236,19 +323,21 @@ function isExtensionFile(file: string): boolean {
  * - 直接 import .ts 文件
  * - 路径别名（将 npm 包名映射到本地模块）
  *
- * 配置了多个别名以兼容 pi-agent 的不同包名：
+ * 配置了多个别名：规范包名 @aluka/coding-agent；旧包名 v0.1 兼容期共存，v0.2 起移除：
+ * - @aluka/coding-agent
  * - @aluka/pi
- * - @earendil-works/pi-coding-agent
- * - @mariozechner/pi-coding-agent
+ * - @earendil-works/pi-coding-agent（兼容期）
+ * - @mariozechner/pi-coding-agent（兼容期）
  * - 以及对应的子模块 (@pi-agent-core, @pi-ai, @pi-tui)
  */
-export function createExtensionLoaderJiti() {
+export function createExtensionLoaderJiti(extraAliases?: Record<string, string>) {
   const root = path.dirname(fileURLToPath(import.meta.url));
   const ext = path.extname(fileURLToPath(import.meta.url));
   const selfIndex = path.resolve(root, `../index${ext}`);
   // pi 包名走兼容 shim：getAgentDir → ~/.pi/agent
   const piCompat = path.resolve(root, `./pi-compat${ext}`);
   const aliases: Record<string, string> = {
+    "@aluka/coding-agent": piCompat,
     "@aluka/pi": selfIndex,
     "@earendil-works/pi-coding-agent": piCompat,
     "@mariozechner/pi-coding-agent": piCompat,
@@ -277,6 +366,11 @@ export function createExtensionLoaderJiti() {
   // （如本 loader.ts / src/index.ts），变换 agent/loop.ts 会报
   // ParseError: Unexpected token（表现为扩展里 migrateConfig 等 named export 为 undefined）。
   // 使用包根 package.json 作为 jiti 根，Node 与 Aluka 均正常。
+  if (extraAliases) {
+    for (const [name, target] of Object.entries(extraAliases)) {
+      aliases[name] = target;
+    }
+  }
   const jitiRoot = path.resolve(root, "../../package.json");
   return createJiti(jitiRoot, {
     interopDefault: true,
@@ -324,6 +418,7 @@ function registerAlukaPiVirtualModules(): void {
   if (typeof register !== "function") return;
 
   const entries: Array<[string, unknown]> = [
+    ["@aluka/coding-agent", piCompat],
     ["@aluka/pi", piCompat],
     ["@earendil-works/pi-coding-agent", piCompat],
     ["@mariozechner/pi-coding-agent", piCompat],
@@ -359,10 +454,12 @@ export async function loadExtensions(options: {
   extraPaths?: string[];
   runtime?: ExtensionRuntime;
   events?: ReturnType<typeof createEventBus>;
+  /** 仅加载 extraPaths（测试隔离：跳过用户/工作区发现） */
+  extraPathsOnly?: boolean;
 }): Promise<LoadExtensionsResult> {
   const runtime = options.runtime ?? createExtensionRuntime();
   const events = options.events ?? createEventBus();
-  const paths = discoverExtensionPaths(options.cwd, options.extraPaths);
+  const paths = discoverExtensionPaths(options.cwd, options.extraPaths, options.extraPathsOnly);
   const native = isAlukaRuntime();
   const extensions: Extension[] = [];
   const errors: Array<{ path: string; error: string }> = [];
@@ -391,6 +488,8 @@ export async function loadExtensions(options: {
       // 创建扩展容器并初始化 API
       const extension = createEmptyExtension(file);
       const api = createExtensionAPI(extension, runtime, events);
+      // manifest 轨（aluka-ui.json）先于代码轨：同 id 时 manifest 优先
+      loadManifestContributions(extension, file);
       await factory(api);
       extensions.push(extension);
     } catch (error) {
@@ -428,6 +527,7 @@ function createEmptyExtension(file: string): Extension {
     flags: new Map(),
     shortcuts: new Map(),
     uiContributions: [],
+    slotData: new Map(),
   };
 }
 
@@ -465,7 +565,7 @@ function createExtensionAPI(
     registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">) {
       extension.commands.set(name, { ...options, name, sourceInfo: extension.sourceInfo });
     },
-    /** 声明式 UI 贡献（v1）：校验不通过的整条拒绝并告警，不影响扩展其余注册 */
+    /** 声明式 UI 贡献（v1/v2）：校验不通过的整条拒绝并告警，不影响扩展其余注册 */
     contributes(ui: UiContribution) {
       const problems: string[] = [];
       if (!ui || typeof ui !== "object") {
@@ -473,7 +573,9 @@ function createExtensionAPI(
       } else {
         if (typeof ui.id !== "string" || !ui.id.trim()) problems.push("缺少 id");
         if (typeof ui.title !== "string" || !ui.title.trim()) problems.push("缺少 title");
-        if (ui.version !== 1) problems.push(`不支持的 version：${String(ui.version)}（当前支持 1）`);
+        const contributionVersion = ui.version;
+        if (contributionVersion !== 1 && contributionVersion !== 2) problems.push(`不支持的 version：${String(contributionVersion)}（当前支持 1、2）`);
+        if (contributionVersion === 2 && !SHELL_SLOTS.includes(ui.slot)) problems.push(`非法的 slot：${String(ui.slot)}（白名单见 contracts/shell.ts）`);
         if (extension.uiContributions.some((item) => item.id === ui.id)) problems.push(`id 重复：${ui.id}`);
       }
       if (problems.length) {
@@ -481,6 +583,29 @@ function createExtensionAPI(
         return;
       }
       extension.uiContributions.push(ui);
+    },
+    /** 槽位数据提供者注册（getSlotData RPC 消费，500ms 超时兜底） */
+    contributesData(id: string, provider: SlotDataProvider) {
+      if (typeof id !== "string" || !id.trim() || typeof provider !== "function") {
+        console.warn(`[extension] ${extension.path} contributesData 被忽略（需 id 与 provider 函数）`);
+        return;
+      }
+      extension.slotData.set(id.trim(), provider);
+    },
+    /** 数据主动变更信号（推送通道预留；宿主当前以轮询兜底） */
+    refreshData(id: string) {
+      events.emit("slot_data_changed", { id, extensionPath: extension.path });
+    },
+    /** v2：读取插件设置（~/.aluka/agent/settings.json 的 pluginSettings；未设置返回 undefined） */
+    getPluginSetting(key: string) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(settingsPath(getAgentDir()), "utf8")) as {
+          pluginSettings?: Record<string, unknown>;
+        };
+        return (raw?.pluginSettings ?? {})[key];
+      } catch {
+        return undefined;
+      }
     },
     /** 注册键盘快捷键 */
     registerShortcut(shortcut: string, options: { description?: string; handler: never }) {
