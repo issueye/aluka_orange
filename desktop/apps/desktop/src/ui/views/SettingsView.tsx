@@ -15,6 +15,7 @@ import {
   Palette,
   Search,
   Sparkles,
+  TerminalSquare,
   Trash2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -33,7 +34,7 @@ import type {
 import { pathsEqual, formatUsage } from "../lib/utils.ts";
 
 /** 设置页内的子分区 */
-type SettingsSection = "workspace" | "providers" | "appearance" | "usage" | "about";
+type SettingsSection = "workspace" | "providers" | "appearance" | "usage" | "about" | "env";
 
 /** 侧栏宽度默认值 / 允许范围（与 agent 侧 settings.ts 约定一致） */
 const SIDEBAR_WIDTH_DEFAULT = 288;
@@ -65,7 +66,10 @@ const SETTINGS_NAV_GROUPS: Array<{
   {
     id: "other",
     label: "其他",
-    items: [{ id: "about", label: "关于", icon: Info }],
+    items: [
+      { id: "env", label: "环境变量", icon: TerminalSquare },
+      { id: "about", label: "关于", icon: Info },
+    ],
   },
 ];
 
@@ -445,9 +449,9 @@ export function SettingsView(props: {
             </div>
           </div>
         )}
-        {/* 插件设置与环境变量：所有设置分区共用（about 之外也可见） */}
+        {section === "env" && <EnvVarsSection />}
+        {/* 插件设置：所有设置分区共用（about 之外也可见） */}
         <PluginSettingsSection />
-        <EnvVarsSection />
       </div>
     </div>
   );

@@ -87,82 +87,95 @@ export function EnvVarsSection() {
 
   if (loading) {
     return (
-      <div className="settings-page-sections">
-        <section className="settings-section-block">
-          <h2 className="settings-section-label">环境变量</h2>
-          <div className="hint">加载中…</div>
-        </section>
+      <div className="settings-page-shell">
+        <div className="settings-page-title-row">
+          <h1 className="settings-page-title">环境变量</h1>
+        </div>
+        <div className="settings-page-sections">
+          <section className="settings-section-block">
+            <h2 className="settings-section-label">环境变量</h2>
+            <div className="hint">加载中…</div>
+          </section>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="settings-page-sections">
-      <section className="settings-section-block">
-        <h2 className="settings-section-label">环境变量</h2>
-        <p className="settings-section-desc">
-          持久化到 settings.json，注入 Agent 进程。重启后仍生效（含插件/工具/供应商读取）。
-        </p>
-        <div className="settings-card">
-          {rows.length === 0 ? (
-            <div className="hint">暂无自定义环境变量</div>
-          ) : null}
-          {rows.map((row, index) => (
-            <div key={row.key} className="settings-row">
+    <div className="settings-page-shell">
+      <div className="settings-page-title-row">
+        <h1 className="settings-page-title">环境变量</h1>
+        <div className="settings-page-title-action">
+          <Button variant="secondary" onClick={() => void refresh()}>刷新</Button>
+        </div>
+      </div>
+      <div className="settings-page-sections">
+        <section className="settings-section-block">
+          <h2 className="settings-section-label">变量列表</h2>
+          <div className="hint">
+            持久化到 settings.json，注入 Agent 进程。重启后仍生效（含插件/工具/供应商读取）。
+          </div>
+          <div className="settings-card">
+            {rows.length === 0 ? (
+              <div className="hint">暂无自定义环境变量</div>
+            ) : null}
+            {rows.map((row, index) => (
+              <div key={row.key} className="settings-row">
+                <div className="settings-row-copy">
+                  <div className="settings-row-title">{row.key}</div>
+                </div>
+                <div className="settings-row-control env-row-control">
+                  <Input
+                    className="ui-input--compact env-value-input"
+                    placeholder="值"
+                    value={row.value}
+                    onChange={(text) => updateRow(index, { value: text })}
+                  />
+                  {row.dirty ? (
+                    <Button
+                      variant="secondary"
+                      className="env-row-save"
+                      onClick={() => void saveRow(index)}
+                    >
+                      保存
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    className="env-row-delete"
+                    onClick={() => void removeRow(index)}
+                  >
+                    删除
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <div className="settings-row settings-row-last">
               <div className="settings-row-copy">
-                <div className="settings-row-title">{row.key}</div>
+                <div className="settings-row-title">新增</div>
               </div>
               <div className="settings-row-control env-row-control">
                 <Input
+                  className="ui-input--compact env-key-input"
+                  placeholder="变量名"
+                  value={newKey}
+                  onChange={setNewKey}
+                />
+                <Input
                   className="ui-input--compact env-value-input"
                   placeholder="值"
-                  value={row.value}
-                  onChange={(text) => updateRow(index, { value: text })}
+                  value={newValue}
+                  onChange={setNewValue}
                 />
-                {row.dirty ? (
-                  <Button
-                    variant="secondary"
-                    className="env-row-save"
-                    onClick={() => void saveRow(index)}
-                  >
-                    保存
-                  </Button>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  className="env-row-delete"
-                  onClick={() => void removeRow(index)}
-                >
-                  删除
+                <Button variant="secondary" onClick={() => void addNew()}>
+                  添加
                 </Button>
               </div>
             </div>
-          ))}
-          <div className="settings-row settings-row-last">
-            <div className="settings-row-copy">
-              <div className="settings-row-title">新增</div>
-            </div>
-            <div className="settings-row-control env-row-control">
-              <Input
-                className="ui-input--compact env-key-input"
-                placeholder="变量名"
-                value={newKey}
-                onChange={setNewKey}
-              />
-              <Input
-                className="ui-input--compact env-value-input"
-                placeholder="值"
-                value={newValue}
-                onChange={setNewValue}
-              />
-              <Button variant="secondary" onClick={() => void addNew()}>
-                添加
-              </Button>
-            </div>
+            {error ? <div className="hint env-error">{error}</div> : null}
           </div>
-          {error ? <div className="hint env-error">{error}</div> : null}
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
