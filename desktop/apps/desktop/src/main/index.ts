@@ -9,6 +9,7 @@ import { app, createWindow, createTray, setAssetDir, globalShortcut, shell } fro
 import { createDesktopHost, type DesktopHost } from "../host/index.ts";
 import { pickFolder } from "../host/choose-folder.ts";
 import { startHttpServer, type RpcHandler } from "./http-server.ts";
+import { prewarmPluginUi, renderPluginComponent, runPluginComponentAction, stopSsr, unloadPluginComponent } from "./plugin-ui.ts";
 import { PROTOCOL_VERSION } from "../shared/contracts.ts";
 import { VERSION } from "../../../../../agent/src/config.ts";
 import { coerceApi } from "../../../../../agent/src/ai/types.ts";
@@ -211,6 +212,46 @@ registerRPC("getActiveSessionId", () => ({
 registerRPC("isBusy", () => ({ busy: requireHost().isBusy() }));
 registerRPC("listExtensions", () => requireHost().listExtensions());
 registerRPC("listUiContributions", () => requireHost().listUiContributions());
+registerRPC("getSlotData", (params: { slot?: string; contributionId?: string }) => {
+  if (!params?.slot?.trim() || !params?.contributionId?.trim()) {
+    throw new Error("getSlotData requires slot and contributionId");
+  }
+  return requireHost().getSlotData(params.slot.trim(), params.contributionId.trim());
+});
+registerRPC("getPluginComponentModule", (params: { contributionId?: string }) => {
+  if (!params?.contributionId?.trim()) throw new Error("getPluginComponentModule requires contributionId");
+  return requireHost().getPluginComponentModule(params.contributionId.trim());
+});
+// 注意：GUI 桥不 await Promise（本文件头部注释）——组件档渲染/动作必须走
+// 「RPC 发起（return started） + emitToUi 事件回传」模式，保证窗口与浏览器双通道一致。
+registerRPC("pluginUiRender", (params: { contributionId?: string; restored?: unknown }) => {
+  if (!params?.contributionId?.trim()) throw new Error("pluginUiRender requires contributionId");
+  const id = params.contributionId.trim();
+  const resolved = requireHost().getPluginComponentModule(id);
+  if (!resolved.ok || !resolved.path) {
+    emitToUi("pluginui.render", { contributionId: id, ok: false as const, error: resolved.error });
+    return { started: true as const };
+  }
+  void renderPluginComponent(resolved.path, id, params.restored).then((result) => {
+    emitToUi("pluginui.render", { contributionId: id, ...result });
+  });
+  return { started: true as const };
+});
+registerRPC("pluginUiAction", (params: { contributionId?: string; name?: string; payload?: unknown }) => {
+  if (!params?.contributionId?.trim() || typeof params?.name !== "string" || !params.name.trim()) {
+    throw new Error("pluginUiAction requires contributionId and name");
+  }
+  const id = params.contributionId.trim();
+  void runPluginComponentAction(id, params.name.trim(), params.payload).then((result) => {
+    emitToUi("pluginui.action", { contributionId: id, name: params.name, ...result });
+  });
+  return { started: true as const };
+});
+registerRPC("pluginUiUnload", (params: { contributionId?: string }) => {
+  if (!params?.contributionId?.trim()) throw new Error("pluginUiUnload requires contributionId");
+  void unloadPluginComponent(params.contributionId.trim());
+  return { started: true as const };
+});
 registerRPC("reloadExtensions", () => requireHost().reloadExtensions());
 registerRPC("listSkills", () => requireHost().listSkills());
 registerRPC("listPrompts", () => requireHost().listPrompts());
@@ -257,6 +298,11 @@ registerRPC("sendPrompt", (params: { text?: string; images?: Array<{ data?: stri
 });
 registerRPC("abortPrompt", () => requireHost().abortPrompt());
 function shutdown(): void {
+  try {
+    stopSsr();
+  } catch {
+    /* ignore */
+  }
   try {
     host?.dispose();
   } catch (err) {
@@ -358,6 +404,25 @@ registerRPC("testProviderConnection", (params: {
   }),
 );
 registerRPC("listModelOptions", () => requireHost().listModelOptions());
+registerRPC("patchPluginSetting", (params: { key?: string; value?: unknown }) => {
+  if (!params?.key?.trim()) throw new Error("patchPluginSetting requires key");
+  const key = params.key.trim();
+  const current = (requireHost().getSettings().pluginSettings ?? {}) as Record<string, unknown>;
+  return requireHost().patchSettings({
+    pluginSettings: { ...current, [key]: params.value },
+  });
+});
+registerRPC("listEnvVars", () => requireHost().listEnvVars());
+registerRPC("setEnvVar", (params: { key?: string; value?: string }) => {
+  if (!params?.key?.trim()) throw new Error("setEnvVar requires key");
+  requireHost().setEnvVar(params.key.trim(), params.value ?? "");
+  return { ok: true };
+});
+registerRPC("removeEnvVar", (params: { key?: string }) => {
+  if (!params?.key?.trim()) throw new Error("removeEnvVar requires key");
+  requireHost().removeEnvVar(params.key.trim());
+  return { ok: true };
+});
 registerRPC("upsertCustomProvider", (params: {
   provider?: string;
   baseUrl?: string;
@@ -438,6 +503,12 @@ registerRPC("selectModel", (params: { provider?: string; modelId?: string }) => 
   }
   return requireHost().selectModel(params.provider.trim(), params.modelId.trim());
 });
+
+// 启动预热：无条件预载嵌入内核（注册 react/@aluka/ui 虚拟模块），
+// 必须早于任何插件代码 import（扩展启动期加载、组件随时加载）；失败不阻塞主流程。
+await prewarmPluginUi().catch((err) =>
+  console.warn("[aluka-desktop] plugin ui prewarm failed", err),
+);
 
 createDesktopHost({
   emit: (name, data) => {

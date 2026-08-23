@@ -30,6 +30,7 @@ import {
   type UsageStatsView,
   type ExtensionInventory,
   type UiContribution,
+  type SlotData,
   type PromptListItem,
   type OpenedSession,
   type SessionHandle,
@@ -94,8 +95,26 @@ export interface DesktopHost {
   dispose(): void;
   /** 列出已加载的扩展及其提供的工具和命令 */
   listExtensions(): ReturnType<DesktopRuntime["listExtensions"]>;
-  /** 扩展声明的 UI 贡献（v1 声明式；含加载期告警） */
+  /** 扩展声明的 UI 贡献（v1/v2 声明式；含加载期告警） */
   listUiContributions(): { contributions: UiContribution[]; warnings: string[] };
+  /** 槽位 T0 数据（contributesData 提供者；同步契约——GUI 桥不 await Promise） */
+  getSlotData(slot: string, contributionId: string): {
+    ok: boolean;
+    data?: SlotData;
+    error?: string;
+  };
+  /** 组件档模块路径（uiModule 相对插件根解析；供主进程 SSR 加载） */
+  getPluginComponentModule(contributionId: string): {
+    ok: boolean;
+    path?: string;
+    error?: string;
+  };
+  /** 用户环境变量清单（settings.json envVars 段） */
+  listEnvVars(): Record<string, string>;
+  /** 设置环境变量（持久化 + 注入当前进程 process.env） */
+  setEnvVar(key: string, value: string): void;
+  /** 删除环境变量 */
+  removeEnvVar(key: string): void;
   /** 手动热重载扩展（重扫目录 + 重建工具）并返回最新清单 */
   reloadExtensions(): Promise<ExtensionInventory>;
   /** 列出可用技能 */
@@ -242,6 +261,11 @@ export async function createDesktopHost(opts: {
     },
     listExtensions: () => runtime.listExtensions(),
     listUiContributions: () => runtime.listUiContributions(),
+    getSlotData: (slot, contributionId) => runtime.getSlotData(slot, contributionId),
+    getPluginComponentModule: (contributionId) => runtime.getPluginComponentModule(contributionId),
+    listEnvVars: () => runtime.listEnvVars(),
+    setEnvVar: (key, value) => runtime.setEnvVar(key, value),
+    removeEnvVar: (key) => runtime.removeEnvVar(key),
     reloadExtensions: () => runtime.reloadExtensions(),
     listSkills: () => runtime.listSkills(),
     listPrompts: () => runtime.listPrompts(),

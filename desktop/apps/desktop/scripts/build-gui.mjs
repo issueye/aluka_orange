@@ -66,3 +66,14 @@ if (path.normalize(desktopCopy) !== path.normalize(outfile)) {
   fs.copyFileSync(outfile, desktopCopy);
   console.log(`[build-gui] copied ${desktopCopy}`);
 }
+
+// —— 嵌入式 SSR 内核：拷贝到 exe 旁（编译版运行时探测同目录） ——
+const ssrBundle = path.resolve(appRoot, "src/main/ssr-out/ssr-embedded.mjs");
+if (fs.existsSync(ssrBundle)) {
+  for (const dir of [path.dirname(outfile), path.dirname(desktopCopy)]) {
+    fs.copyFileSync(ssrBundle, path.join(dir, "ssr-embedded.mjs"));
+  }
+  console.log(`[build-gui] copied ssr-embedded.mjs alongside exe`);
+} else {
+  console.warn(`[build-gui] WARNING: ssr-embedded.mjs not found (${ssrBundle}); run "node scripts/ssr-build.mjs" first`);
+}

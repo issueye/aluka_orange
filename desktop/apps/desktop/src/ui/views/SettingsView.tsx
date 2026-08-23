@@ -21,6 +21,8 @@ import type { LucideIcon } from "lucide-react";
 import { rpc } from "../bridge.ts";
 import { ProvidersPanel } from "../ProvidersPanel.tsx";
 import { UsagePanel } from "../UsagePanel.tsx";
+import { PluginSettingsSection } from "./PluginSettingsSection.tsx";
+import { EnvVarsSection } from "./EnvVarsSection.tsx";
 import { Button, Input, Slider, Switch } from "../components/index.ts";
 import type { WorkspaceItem } from "../WorkspaceSidebar.tsx";
 import type {
@@ -441,6 +443,8 @@ export function SettingsView(props: {
                 </div>
               </section>
             </div>
+            <PluginSettingsSection />
+            <EnvVarsSection />
           </div>
         )}
       </div>
