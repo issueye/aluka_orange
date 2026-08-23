@@ -34,13 +34,106 @@ export type AlukaBridge = {
   };
 };
 
+let httpBridge: AlukaBridge | undefined;
+
+/**
+ * HTTP 降级传输：浏览器直开 http://127.0.0.1:<port>/?token=… 时启用（无 window.aluka 注入）。
+ * - rpc：POST /rpc/<method>（x-aluka-token 头，见主进程 http-server.ts）
+ * - events：/events 长轮询循环（有订阅者时启动；断线 1s 退避重连）
+ * - 窗口控制为 no-op（浏览器无窗口控制能力）
+ */
+function createHttpBridge(): AlukaBridge {
+  // token 优先取页面查询串（GUI/浏览器直开）；开发态（vite HMR）由 VITE_ALUKA_TOKEN 注入
+  const envToken = (import.meta as { env?: { VITE_ALUKA_TOKEN?: string } }).env?.VITE_ALUKA_TOKEN;
+  const token = new URLSearchParams(window.location.search).get("token") ?? envToken ?? "";
+  const base = window.location.origin;
+  const listeners = new Map<string, Set<(data: unknown) => void>>();
+  let since = 0;
+  let polling = false;
+
+  async function pump(): Promise<void> {
+    if (polling) return;
+    polling = true;
+    while (listeners.size > 0) {
+      try {
+        const res = await fetch(`${base}/events?since=${since}`, {
+          headers: { "x-aluka-token": token },
+        });
+        if (!res.ok) throw new Error(`events poll failed: ${res.status}`);
+        const payload = (await res.json()) as {
+          events?: Array<{ seq: number; name: string; data: unknown }>;
+          last?: number;
+        };
+        for (const event of payload.events ?? []) {
+          since = Math.max(since, event.seq);
+          for (const handler of [...(listeners.get(event.name) ?? [])]) {
+            try {
+              handler(event.data);
+            } catch {
+              // 单个订阅者异常不中断轮询
+            }
+          }
+        }
+        if (typeof payload.last === "number") since = Math.max(since, payload.last);
+      } catch {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+    }
+    polling = false;
+  }
+
+  return {
+    window: {
+      minimize: () => console.warn("[aluka-bridge] 浏览器模式不支持窗口控制"),
+      toggleMaximize: () => console.warn("[aluka-bridge] 浏览器模式不支持窗口控制"),
+      close: () => console.warn("[aluka-bridge] 浏览器模式不支持窗口控制"),
+    },
+    events: {
+      on(name, handler) {
+        let set = listeners.get(name);
+        if (!set) {
+          set = new Set();
+          listeners.set(name, set);
+        }
+        set.add(handler);
+        void pump();
+      },
+      off(name, handler) {
+        const set = listeners.get(name);
+        if (!set) return;
+        set.delete(handler);
+        if (set.size === 0) listeners.delete(name);
+      },
+      emit(name, data) {
+        // UI → 主进程方向（ui-ready 等）：HTTP 模式无对端，静默忽略
+        console.debug("[aluka-bridge] emit ignored (http transport):", name, data);
+      },
+    },
+    rpc: {
+      async call(method, params) {
+        const res = await fetch(`${base}/rpc/${encodeURIComponent(method)}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-aluka-token": token },
+          body: JSON.stringify(params ?? {}),
+        });
+        const payload = (await res.json().catch(() => ({}))) as { result?: unknown; error?: string };
+        if (!res.ok) throw new Error(payload.error ?? `rpc ${method} failed: ${res.status}`);
+        return payload.result;
+      },
+    },
+  };
+}
+
 /**
  * 获取全局桥接对象
- * @throws 当 window.aluka 未注入时抛出错误
+ *
+ * 优先返回 GUI 壳注入的 window.aluka（窗口内，含原生窗口控制）；
+ * 缺省时降级为 HTTP 传输（浏览器直开页面，见 createHttpBridge）。
  */
 export function bridge(): AlukaBridge {
-  if (!window.aluka) throw new Error("window.aluka unavailable");
-  return window.aluka;
+  if (window.aluka) return window.aluka;
+  if (!httpBridge) httpBridge = createHttpBridge();
+  return httpBridge;
 }
 
 /**

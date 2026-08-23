@@ -6,7 +6,7 @@
  * - 设置读写（供应商、模型、主题等）
  * - 扩展与技能管理
  * - Prompt 发送与中止
- * - NPM 包安装、会话导出/分享、更新检查等
+ * - 会话导出/分享、更新检查等
  */
 import type { PingResult, RuntimeInfo } from "../shared/contracts.ts";
 import { PROTOCOL_VERSION } from "../shared/contracts.ts";
@@ -23,13 +23,13 @@ import {
   type UpsertCustomProviderInput,
   type AddProviderModelsInput,
   type RemoteModelView,
-  type InstallNpmPackageOutcome,
   type SessionExportFormat,
   type SessionExportOutcome,
   type SessionShareOutcome,
   type SessionUsageView,
   type UsageStatsView,
   type ExtensionInventory,
+  type UiContribution,
   type PromptListItem,
   type OpenedSession,
   type SessionHandle,
@@ -94,6 +94,8 @@ export interface DesktopHost {
   dispose(): void;
   /** 列出已加载的扩展及其提供的工具和命令 */
   listExtensions(): ReturnType<DesktopRuntime["listExtensions"]>;
+  /** 扩展声明的 UI 贡献（v1 声明式；含加载期告警） */
+  listUiContributions(): { contributions: UiContribution[]; warnings: string[] };
   /** 手动热重载扩展（重扫目录 + 重建工具）并返回最新清单 */
   reloadExtensions(): Promise<ExtensionInventory>;
   /** 列出可用技能 */
@@ -115,7 +117,7 @@ export interface DesktopHost {
   /** 内置厂商目录（含精编模型列表，不含密钥） */
   listBuiltinProviders(): ReturnType<DesktopRuntime["listBuiltinProviders"]>;
   /** 调用扩展的 refreshModels 动态发现模型 */
-  refreshProviderModels(provider: string): Promise<ReturnType<DesktopRuntime["refreshProviderModels"]>>;
+  refreshProviderModels(provider: string): ReturnType<DesktopRuntime["refreshProviderModels"]>;
   /** 探测供应商连通性（GET models，不消耗 token） */
   testProviderConnection(input: {
     provider?: string;
@@ -123,7 +125,7 @@ export interface DesktopHost {
     api?: string;
     apiKey?: string;
     proxy?: string;
-  }): Promise<ReturnType<DesktopRuntime["testProviderConnection"]>>;
+  }): ReturnType<DesktopRuntime["testProviderConnection"]>;
   /** 创建或更新自定义供应商与模型 */
   upsertCustomProvider(input: UpsertCustomProviderInput): ModelsJsonConfigView;
   /** 向已有供应商批量追加模型 */
@@ -149,16 +151,6 @@ export interface DesktopHost {
   selectModel(provider: string, modelId: string): ReturnType<DesktopHost["getSettings"]>;
   /** 检查桌面壳是否有新版本 */
   checkForUpdates(): Promise<UpdateCheckResult>;
-  /** 通过 npm 或 aluka install 安装扩展包 */
-  installNpmPackage(spec: string): Promise<InstallNpmPackageOutcome>;
-  /** 查询 pi 生态插件市场（分页，带已安装标记） */
-  searchPackages(params: { query?: string; limit?: number; from?: number }): Promise<
-    ReturnType<DesktopRuntime["searchPackages"]>
-  >;
-  /** 列出 npm-packages 下已安装的插件 */
-  listInstalledPackages(): ReturnType<DesktopRuntime["listInstalledPackages"]>;
-  /** 卸载 npm-packages 中的包并清理扩展记录 */
-  removeNpmPackage(packageName: string): Promise<ReturnType<DesktopRuntime["removeNpmPackage"]>>;
   /** 导出会话为指定格式（markdown/json/jsonl） */
   exportSession(format?: SessionExportFormat, sessionId?: string): SessionExportOutcome;
   /** 通过 GitHub Gist 分享会话 */
@@ -249,6 +241,7 @@ export async function createDesktopHost(opts: {
       runtime.dispose();
     },
     listExtensions: () => runtime.listExtensions(),
+    listUiContributions: () => runtime.listUiContributions(),
     reloadExtensions: () => runtime.reloadExtensions(),
     listSkills: () => runtime.listSkills(),
     listPrompts: () => runtime.listPrompts(),
@@ -274,10 +267,6 @@ export async function createDesktopHost(opts: {
     listModelOptions: () => runtime.listModelOptions(),
     selectModel: (provider, modelId) => withPreset(runtime.selectModel(provider, modelId)),
     checkForUpdates: () => checkForDesktopUpdate({ currentVersion: VERSION }),
-    installNpmPackage: (spec) => runtime.installNpmPackage(spec),
-    searchPackages: (params) => runtime.searchPackages(params),
-    listInstalledPackages: () => runtime.listInstalledPackages(),
-    removeNpmPackage: (packageName) => runtime.removeNpmPackage(packageName),
     exportSession: (format, sessionId) => runtime.exportSession(format, sessionId),
     shareSession: (sessionId) => runtime.shareSession(sessionId),
     getSessionUsage: (sessionId) => runtime.getSessionUsage(sessionId),

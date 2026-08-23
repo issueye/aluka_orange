@@ -57,13 +57,6 @@ export {
   type RemoteModelView,
 } from "./models-json.ts";
 export {
-  installNpmPackageToAgent,
-  packageNameFromSpec,
-  resolveExtensionEntry,
-  agentNpmPackagesDir,
-  type InstallNpmPackageOutcome,
-} from "./packages.ts";
-export {
   exportSessionToDir,
   renderSessionMarkdown,
   renderSessionJson,
@@ -105,3 +98,4 @@ export {
   samePath,
   workspaceDisplayName,
 } from "./workspaces.ts";
+export type { UiContribution } from "../extensions/types.ts";

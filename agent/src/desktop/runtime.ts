@@ -13,7 +13,7 @@ import { getAgentDir, getSessionsDir } from "../config.ts";
 import { createEventBus } from "../extensions/event-bus.ts";
 import { createExtensionRuntime, loadExtensions } from "../extensions/loader.ts";
 import { ExtensionRunner } from "../extensions/runner.ts";
-import type { ToolDefinition } from "../extensions/types.ts";
+import type { ToolDefinition, UiContribution } from "../extensions/types.ts";
 import { resolveRuntimeApiKey, resolveRuntimeModel } from "../models.ts";
 import { SessionManager, type SessionSummary } from "../session/manager.ts";
 import { killTrackedChildren } from "../process-children.ts";
@@ -62,19 +62,6 @@ import {
 } from "../providers/registry.ts";
 import type { Model } from "../ai/types.ts";
 import type { StreamFn } from "../ai/stream.ts";
-import {
-  agentNpmPackagesDir,
-  installNpmPackageToAgent,
-  installedPackageRoot,
-  type InstallNpmPackageOutcome,
-} from "./packages.ts";
-import {
-  removeNpmPackageFromAgent,
-  searchPiPackages,
-  listInstalledPiPackages,
-  type InstalledPiPackage,
-  type PiPackageRow,
-} from "./package-market.ts";
 import {
   exportSessionToDir,
   type SessionExportFormat,
@@ -245,6 +232,8 @@ export interface DesktopRuntime {
   /** 退出前中止请求并杀掉跟踪的子进程 */
   dispose(): void;
   listExtensions(): ExtensionInventory;
+  /** 扩展声明的 UI 贡献（v1 声明式；含加载期告警） */
+  listUiContributions(): { contributions: UiContribution[]; warnings: string[] };
   listSkills(): SkillListItem[];
   /** 提示词片段清单（.aluka/prompts 下的 Markdown，供插入输入框） */
   listPrompts(): PromptListItem[];
@@ -281,17 +270,6 @@ export interface DesktopRuntime {
   listModelOptions(): ModelOptionView[];
   /** 选用 models.json 中的 provider/model，并写入 settings */
   selectModel(provider: string, modelId: string): ReturnType<typeof settingsView>;
-  /** 用 aluka/npm install 把包装进 agent/npm-packages，并注册扩展入口 */
-  installNpmPackage(spec: string): Promise<InstallNpmPackageOutcome>;
-  /** 查询 pi 生态插件市场（npm registry，keywords:pi-package），带已安装标记 */
-  searchPackages(params: { query?: string; limit?: number; from?: number }): Promise<{
-    packages: PiPackageRow[];
-    total: number;
-  }>;
-  /** 列出 npm-packages 下已安装的插件 */
-  listInstalledPackages(): InstalledPiPackage[];
-  /** 卸载 npm-packages 中的包并清理扩展记录（热重载） */
-  removeNpmPackage(packageName: string): Promise<import("./package-market.ts").RemovePackageOutcome>;
   /** 导出当前或指定会话到 agentDir/exports */
   exportSession(format?: SessionExportFormat, sessionId?: string): SessionExportOutcome;
   /** 经 gh gist 分享会话（secret gist）；需本机 gh 已登录 */
@@ -910,6 +888,30 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
         errors: loaded.errors,
       };
     },
+    listUiContributions() {
+      const contributions: UiContribution[] = [];
+      const warnings: string[] = [];
+      const seen = new Set<string>();
+      for (const ext of loaded.extensions) {
+        for (const ui of ext.uiContributions ?? []) {
+          if (seen.has(ui.id)) {
+            warnings.push(`UI 贡献 id 重复，已忽略后者：${ui.id}（${ext.path}）`);
+            continue;
+          }
+          seen.add(ui.id);
+          contributions.push({
+            id: ui.id,
+            version: ui.version,
+            title: ui.title,
+            description: ui.description,
+            icon: ui.icon,
+            command: ui.command,
+            url: ui.url,
+          });
+        }
+      }
+      return { contributions, warnings };
+    },
     listSkills() {
       return skillItems(loadSkills(cwd));
     },
@@ -988,47 +990,6 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     },
     selectModel(provider, modelId) {
       return applyModelSelection(provider, modelId);
-    },
-    async installNpmPackage(spec) {
-      const outcome = await installNpmPackageToAgent({ agentDir, spec });
-      if (outcome.ok) {
-        api.addLocalPackage(outcome.entryPath);
-        // 热重载扩展，安装后立即可用（无需重启 / 切工作区）
-        await reloadExtensionsForCwd(cwd);
-      }
-      return outcome;
-    },
-    async searchPackages({ query, limit, from }) {
-      const installDir = agentNpmPackagesDir(agentDir);
-      const result = await searchPiPackages({ query, limit, from });
-      return {
-        total: result.total,
-        packages: result.packages.map((row) => ({
-          ...row,
-          installed: fs.existsSync(installedPackageRoot(installDir, row.name)),
-        })),
-      };
-    },
-    listInstalledPackages(): InstalledPiPackage[] {
-      return listInstalledPiPackages(agentDir);
-    },
-    async removeNpmPackage(packageName) {
-      const outcome = await removeNpmPackageFromAgent({ agentDir, packageName });
-      if (outcome.ok) {
-        // 清理 extraExtensions 中指向该包目录的记录
-        const pkgRoot = installedPackageRoot(agentNpmPackagesDir(agentDir), outcome.packageName);
-        const prefix = pkgRoot.toLowerCase() + path.sep;
-        const before = settings.extraExtensions ?? [];
-        const filtered = before.filter((p) => {
-          const lower = path.resolve(p).toLowerCase();
-          return lower !== pkgRoot.toLowerCase() && !lower.startsWith(prefix);
-        });
-        if (filtered.length !== before.length) {
-          settings = saveSettings({ ...settings, extraExtensions: filtered }, agentDir);
-        }
-        await reloadExtensionsForCwd(cwd);
-      }
-      return outcome;
     },
     exportSession(format = "markdown", sessionId) {
       const id = sessionId?.trim() || session.id;

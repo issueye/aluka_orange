@@ -154,23 +154,22 @@ export type ExtensionUiRequest =
 /** Toast 通知项（level：成功/信息/警告/错误） */
 export type Toast = { id: number; message: string; level: "success" | "info" | "warning" | "error" };
 
-/** 顶层视图切换状态 */
-export type ShellView = "chat" | "settings" | "extensions";
+/** 顶层视图切换状态（内置视图 + 运行时注册的插件视图 id，`plugin:<id>`） */
+export type ShellView = "chat" | "settings" | "extensions" | (string & {});
 
-/** 插件市场条目（searchPackages RPC 结果，pi 生态 npm 包） */
-export type MarketRow = {
-  name: string;
-  version?: string;
+/** 扩展 UI 贡献（listUiContributions RPC 结果条目，v1 声明式） */
+export type UiContribution = {
+  id: string;
+  version: 1;
+  title: string;
   description?: string;
-  author?: string;
-  monthlyDownloads?: number;
-  keywords?: string[];
-  npmUrl?: string;
-  installed: boolean;
+  /** lucide 图标名（宿主白名单映射，未知回退拼图图标） */
+  icon?: string;
+  /** 关联 slash 命令：面板「运行命令」把 /command 预填到输入框 */
+  command?: string;
+  /** 外部链接 */
+  url?: string;
 };
-
-/** 已安装插件条目（listInstalledPackages RPC 结果） */
-export type InstalledPkg = { name: string; version?: string; description?: string };
 
 /** 技能条目（listSkills RPC 结果） */
 export type SkillItem = { name: string; description: string; path: string };

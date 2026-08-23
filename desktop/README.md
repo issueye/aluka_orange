@@ -29,6 +29,16 @@ npm start
 npm run smoke
 ```
 
+### 开发流（M3：HMR 免构建）
+
+```powershell
+npm run dev        # 无窗口后端 + vite HMR → 打开 http://localhost:5173
+ALUKA_WINDOW=1 npm run dev   # 同上但保留 GUI 窗口
+npm run dev:gui    # 旧流程：构建 UI 后带窗口运行（启动日志打印浏览器可用的 http page 地址）
+```
+
+后端固定监听 `127.0.0.1:4560`（`ALUKA_HTTP_PORT` 可改），vite 将 `/rpc`、`/events` 代理到后端；token 经 `VITE_ALUKA_TOKEN` 注入（`scripts/dev.mjs` 统一编排）。详见 [HTTP 与插件化路线图](./docs/http-and-plugin-roadmap.md)。
+
 ### 单文件打包
 
 ```powershell
@@ -44,7 +54,7 @@ npm run build:gui
 |------|------|
 | 会话 / composer | Phase 1 |
 | 扩展 UI bridge | Phase 2（notify/confirm/select） |
-| Settings 全页 | Phase 3（主题、provider 预设、本地 packages、npm install、models.json 只读预览） |
+| Settings 全页 | Phase 3（主题、provider 预设、本地 packages、models.json 只读预览） |
 | 托盘 | 关闭 → 隐藏到托盘；托盘 Show / Quit；`Ctrl+Alt+A` 唤起 |
 | 单文件 GUI | `npm run build:gui` |
 | 会话导出 | 侧栏 Export → `~/.aluka/agent/exports/*.md`（亦支持 json/jsonl RPC） |
@@ -56,9 +66,8 @@ npm run build:gui
 ### Packages 边界
 
 - **Add path**：只写 `settings.json` 的 `extraExtensions` / `extensions`
-- **Install**：在 `~/.aluka/agent/npm-packages` 执行 `aluka install <spec>`（`ALUKA` 可用时）或 `npm install <spec>`，再把解析到的入口登记为本地包
 - 包需提供 `index.js/ts` 或 `package.json` 的 `main` / `aluka.extension`
-- 支持 `file:./path`；registry 安装需网络
+- 支持 `file:./path` 本地路径包；不再支持 pi 生态插件市场（npm registry 安装）
 - 打包 exe 内扩展动态加载仍可能受限（jiti）
 
 ## 布局

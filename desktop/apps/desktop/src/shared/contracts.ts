@@ -16,7 +16,7 @@ export interface RuntimeInfo {
   platform: string;
   arch: string;
   agentDirHint: string;
-  phase: "0" | "1" | "2" | "3" | "4";
+  phase: "0" | "1" | "2" | "3" | "4" | "5";
 }
 
 export interface SessionSummaryView {

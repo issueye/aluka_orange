@@ -6,9 +6,7 @@ import { describe, it } from "node:test";
 import {
   createDesktopRuntime,
   createDesktopUI,
-  packageNameFromSpec,
   parseGhGistStdout,
-  resolveExtensionEntry,
   shareSessionViaGh,
   isTemporaryWorkspace,
   samePath,
@@ -225,36 +223,6 @@ describe("models.json preview", () => {
     rt.removeCustomProvider("ollama");
     assert.equal(rt.getModelsJsonConfig().providers.length, 0);
 
-    fs.rmSync(agentDir, { recursive: true, force: true });
-    fs.rmSync(cwd, { recursive: true, force: true });
-  });
-});
-
-describe("npm package helpers", () => {
-  it("parses specs and resolves extension entry", () => {
-    assert.equal(packageNameFromSpec("@scope/pkg@1.2.3"), "@scope/pkg");
-    assert.equal(packageNameFromSpec("lodash@4"), "lodash");
-    const fixture = path.join(process.cwd(), "scripts", "fixtures", "tiny-ext");
-    const entry = resolveExtensionEntry(fixture);
-    assert.ok(entry && entry.endsWith("index.js"));
-  });
-
-  it("installs file: fixture via npm and registers package", async () => {
-    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-agent-"));
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "aluka-cwd-"));
-    const fixture = path.join(process.cwd(), "scripts", "fixtures", "tiny-ext");
-    const spec = `file:${fixture}`;
-    const rt = await createDesktopRuntime({ agentDir, cwd });
-    const outcome = await rt.installNpmPackage(spec);
-    if (!outcome.ok) {
-      // 无 npm / 环境受限时跳过集成断言，保留单元覆盖
-      assert.ok(/npm|aluka|install/i.test(outcome.error), outcome.error);
-      fs.rmSync(agentDir, { recursive: true, force: true });
-      fs.rmSync(cwd, { recursive: true, force: true });
-      return;
-    }
-    assert.ok(outcome.entryPath.includes("node_modules"));
-    assert.ok(rt.listLocalPackages().some((p) => p === outcome.entryPath));
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(cwd, { recursive: true, force: true });
   });

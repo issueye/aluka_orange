@@ -34,6 +34,7 @@ import type {
   ProviderConfig,
   RegisteredCommand,
   ToolDefinition,
+  UiContribution,
 } from "./types.ts";
 import type { Model, Provider, ThinkingLevel } from "../ai/types.ts";
 import { applyRuntimeProviderRegistrations, unregisterProviderEntry } from "../providers/registry.ts";
@@ -426,6 +427,7 @@ function createEmptyExtension(file: string): Extension {
     commands: new Map(),
     flags: new Map(),
     shortcuts: new Map(),
+    uiContributions: [],
   };
 }
 
@@ -462,6 +464,23 @@ function createExtensionAPI(
     /** 注册斜杠命令 */
     registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">) {
       extension.commands.set(name, { ...options, name, sourceInfo: extension.sourceInfo });
+    },
+    /** 声明式 UI 贡献（v1）：校验不通过的整条拒绝并告警，不影响扩展其余注册 */
+    contributes(ui: UiContribution) {
+      const problems: string[] = [];
+      if (!ui || typeof ui !== "object") {
+        problems.push("参数须为对象");
+      } else {
+        if (typeof ui.id !== "string" || !ui.id.trim()) problems.push("缺少 id");
+        if (typeof ui.title !== "string" || !ui.title.trim()) problems.push("缺少 title");
+        if (ui.version !== 1) problems.push(`不支持的 version：${String(ui.version)}（当前支持 1）`);
+        if (extension.uiContributions.some((item) => item.id === ui.id)) problems.push(`id 重复：${ui.id}`);
+      }
+      if (problems.length) {
+        console.warn(`[extension] ${extension.path} contributes 被拒绝：${problems.join("；")}`);
+        return;
+      }
+      extension.uiContributions.push(ui);
     },
     /** 注册键盘快捷键 */
     registerShortcut(shortcut: string, options: { description?: string; handler: never }) {

@@ -6,6 +6,16 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify("greet extension loaded", "info");
   });
 
+  // M4 示例：声明式 UI 贡献（宿主侧栏菜单项 + 声明式面板，不含前端代码）
+  pi.contributes({
+    id: "greet-demo",
+    version: 1,
+    title: "问候插件",
+    description: "示例：声明式 UI 贡献。「运行命令」把 /hello 预填到输入框，发送后由扩展命令处理。",
+    icon: "terminal",
+    command: "hello",
+  });
+
   pi.registerTool({
     name: "greet",
     label: "Greet",

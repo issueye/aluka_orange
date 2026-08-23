@@ -825,6 +825,8 @@ export interface ExtensionAPI {
     tool: ToolDefinition<TParams, TDetails, TState>,
   ): void;
   registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
+  /** 声明式 UI 贡献（v1：宿主侧栏菜单项 + 声明式面板） */
+  contributes(ui: UiContribution): void;
   registerShortcut(
     shortcut: KeyId,
     options: { description?: string; handler: (ctx: ExtensionContext) => Promise<void> | void },
@@ -907,7 +909,28 @@ export interface Extension {
   entryRenderers?: Map<string, EntryRenderer>;
   commands: Map<string, RegisteredCommand>;
   flags: Map<string, ExtensionFlag>;
-  shortcuts: Map<KeyId, ExtensionShortcut>;
+  shortcuts: Map<string, ExtensionShortcut>;
+  /** 声明式 UI 贡献（contributes() 收集，v1） */
+  uiContributions: UiContribution[];
+}
+
+/**
+ * 扩展 UI 贡献（v1 声明式，见 desktop/docs/http-and-plugin-roadmap.md M4）
+ * —— 只描述元数据，不含前端代码；宿主以声明式渲染器呈现。
+ */
+export interface UiContribution {
+  /** 全局唯一 id（跨扩展重复时后者被拒并告警） */
+  id: string;
+  /** 贡献 schema 版本；宿主不识别的版本整条忽略并告警 */
+  version: 1;
+  title: string;
+  description?: string;
+  /** lucide 图标名（宿主白名单映射，未知回退拼图图标） */
+  icon?: string;
+  /** 关联 slash 命令：面板「运行命令」把 /command 预填到输入框 */
+  command?: string;
+  /** 外部链接（面板「打开链接」） */
+  url?: string;
 }
 
 export interface ExtensionRuntime {

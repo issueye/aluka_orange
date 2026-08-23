@@ -6,11 +6,14 @@
   "scripts": {
     "build:ui": "vite build",
     "start": "node ./scripts/run-aluka.mjs",
-    "dev": "npm run build:ui && npm start",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run build:ui",
-    "build:gui": "npm run build:ui && node ./scripts/build-gui.mjs"
+    "build:gui": "npm run build:ui && node ./scripts/build-gui.mjs",
+    "dev:gui": "npm run build:ui && npm start",
+    "vite": "vite"
   },
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^4.3.4",

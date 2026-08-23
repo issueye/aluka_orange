@@ -4,9 +4,8 @@
  * 目录布局（均在 Aluka 自己的 agentDir 下，不扫描 ~/.pi）：
  * - ~/.aluka/agent/settings.json → packages: ["npm:foo", "git:github.com/org/repo"]
  * - ~/.aluka/agent/npm/node_modules/<pkg>
- * - ~/.aluka/agent/npm-packages/node_modules/<pkg>
  * - ~/.aluka/agent/git/github.com/org/repo
- * - package.json → pi.extensions[] / aluka.extensions[]（亦可单数字段 extension）
+ * - package.json → aluka.extensions[]（亦可单数字段 extension）
  */
 
 import fs from "node:fs";
@@ -36,20 +35,18 @@ function pushRel(candidates: string[], value: unknown): void {
 
 /**
  * 解析包根目录下的全部扩展入口文件。
- * 优先 package.json 的 aluka.extensions / pi.extensions（及单数 extension），
+ * 优先 package.json 的 aluka.extensions（及单数 extension），
  * 再回退 main/module/exports["."] 与 index.*。
  */
 export function resolveExtensionEntries(packageRoot: string): string[] {
   const pj = readJson(path.join(packageRoot, "package.json"));
   const candidates: string[] = [];
   if (pj) {
-    for (const key of ["aluka", "pi"] as const) {
-      const block = pj[key];
-      if (block && typeof block === "object" && !Array.isArray(block)) {
-        const rec = block as Record<string, unknown>;
-        pushRel(candidates, rec.extensions);
-        pushRel(candidates, rec.extension);
-      }
+    const aluka = pj["aluka"];
+    if (aluka && typeof aluka === "object" && !Array.isArray(aluka)) {
+      const rec = aluka as Record<string, unknown>;
+      pushRel(candidates, rec.extensions);
+      pushRel(candidates, rec.extension);
     }
     for (const key of ["main", "module"] as const) {
       pushRel(candidates, pj[key]);
@@ -88,9 +85,9 @@ export function resolveExtensionEntry(packageRoot: string): string | undefined {
   return resolveExtensionEntries(packageRoot)[0];
 }
 
-/** npm 安装目录：pi 用 npm，aluka 桌面用 npm-packages */
+/** npm 安装目录（agent 自身 packages 功能；pi 市场包目录已移除） */
 export function agentNpmInstallDirs(agentDir: string): string[] {
-  return [path.join(agentDir, "npm"), path.join(agentDir, "npm-packages")];
+  return [path.join(agentDir, "npm")];
 }
 
 export function agentGitDir(agentDir: string): string {

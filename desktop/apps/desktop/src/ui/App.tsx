@@ -3,8 +3,6 @@ import {
   Minus,
   Square,
   X,
-  Settings as SettingsIcon,
-  Boxes,
   Share2,
   Download,
   PanelLeft,
@@ -19,6 +17,8 @@ import { WindowResizeHandle } from "./WindowResizeHandle.tsx";
 import { ChatView } from "./views/ChatView.tsx";
 import { SettingsView } from "./views/SettingsView.tsx";
 import { ExtensionsView } from "./views/ExtensionsView.tsx";
+import { PluginPanel } from "./views/PluginPanel.tsx";
+import { menuViews, viewLabel, registerRuntimeView, clearRuntimeViews, pluginIcon } from "./views/registry.ts";
 import { Button, ConfirmDialog, Dialog, Input, Spinner } from "./components/index.ts";
 import {
   ExtensionUiModal,
@@ -37,6 +37,7 @@ import type {
   TimelineImage,
   TimelineItem,
   Toast,
+  UiContribution,
 } from "./types.ts";
 import {
   pathsEqual,
@@ -89,6 +90,8 @@ export function App() {
   const [selectChoice, setSelectChoice] = useState<string | undefined>(); // 弹窗选择结果
   const [modalInput, setModalInput] = useState(""); // 弹窗输入内容
   const [extReloading, setExtReloading] = useState(false); // 扩展热重载进行中（header 按钮）
+  /** 扩展声明的 UI 贡献（listUiContributions；重载扩展后刷新） */
+  const [uiContributions, setUiContributions] = useState<UiContribution[]>([]);
   const toastSeq = useRef(0); // Toast 序列号
   const timelineCache = useRef<Record<string, TimelineItem[]>>({});
   const sessionRef = useRef<{ cwd?: string; id?: string }>({});
@@ -250,6 +253,18 @@ export function App() {
       setTimeline(items);
     }
   }, [fetchHostTimeline, rememberTimeline]);
+
+  /** 切换壳视图（注册表驱动）：设置页打开时同步刷新设置与用量 */
+  const openView = useCallback(
+    (next: ShellView) => {
+      setView(next);
+      if (next === "settings") {
+        void loadSettings();
+        void refreshUsage(activeId);
+      }
+    },
+    [loadSettings, refreshUsage, activeId],
+  );
 
   const openSession = useCallback(
     async (id: string, cwd?: string) => {
@@ -806,15 +821,6 @@ export function App() {
       }
       void applyOpenedRef.current(result);
     };
-    const onPackageInstall = (raw: unknown) => {
-      const result = raw as {
-        ok?: boolean;
-        error?: string;
-        packageName?: string;
-      };
-      if (result?.ok) toast(`扩展包 ${result.packageName} 已安装`, "info");
-      else toast(result?.error ?? "安装失败", "error");
-    };
 
     const onUpdateCheck = (raw: unknown) => {
       const result = raw as {
@@ -850,7 +856,6 @@ export function App() {
     bus.on("prompt.result", onPromptResult);
     bus.on("session.share", onShare);
     bus.on("workspace.choose", onWorkspaceChoose);
-    bus.on("package.install", onPackageInstall);
     bus.on("update.check", onUpdateCheck);
 
     return () => {
@@ -858,7 +863,6 @@ export function App() {
       bus.off("prompt.result", onPromptResult);
       bus.off("session.share", onShare);
       bus.off("workspace.choose", onWorkspaceChoose);
-      bus.off("package.install", onPackageInstall);
       bus.off("update.check", onUpdateCheck);
     };
   }, [idleStatus, rememberTimeline, refreshSessions, toast]);
@@ -876,6 +880,59 @@ export function App() {
     window.addEventListener("aluka:prompt-insert", onPromptInsert);
     return () => window.removeEventListener("aluka:prompt-insert", onPromptInsert);
   }, [toast]);
+
+  /** M4：拉取扩展声明的 UI 贡献（挂载 + 扩展重载后刷新），告警以 Toast 播报 */
+  const loadUiContributions = useCallback(async () => {
+    try {
+      const result = await rpc<{ contributions?: UiContribution[]; warnings?: string[] }>("listUiContributions");
+      setUiContributions(result?.contributions ?? []);
+      for (const warning of result?.warnings ?? []) toast(warning, "warning");
+    } catch (err) {
+      // 非致命：贡献面板缺席不影响主流程
+      console.warn("[app] listUiContributions failed", err);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void loadUiContributions();
+  }, [loadUiContributions]);
+
+  useEffect(() => {
+    const onReloaded = () => void loadUiContributions();
+    window.addEventListener("aluka:extensions-reloaded", onReloaded);
+    return () => window.removeEventListener("aluka:extensions-reloaded", onReloaded);
+  }, [loadUiContributions]);
+
+  /** 贡献 → 运行时视图注册表同步；当前停留的插件面板消失时回到对话 */
+  useEffect(() => {
+    clearRuntimeViews();
+    uiContributions.forEach((contribution, index) => {
+      registerRuntimeView({
+        id: `plugin:${contribution.id}`,
+        label: contribution.title,
+        icon: pluginIcon(contribution.icon),
+        order: 1000 + index,
+        inMenu: true,
+      });
+    });
+    setView((current) => {
+      if (
+        typeof current === "string"
+        && current.startsWith("plugin:")
+        && !uiContributions.some((contribution) => `plugin:${contribution.id}` === current)
+      ) {
+        return "chat";
+      }
+      return current;
+    });
+  }, [uiContributions]);
+
+  /** 当前插件面板对应的贡献（view 形如 plugin:<id>） */
+  const activePluginContribution = useMemo(() => {
+    if (typeof view !== "string" || !view.startsWith("plugin:")) return undefined;
+    const id = view.slice("plugin:".length);
+    return uiContributions.find((contribution) => contribution.id === id);
+  }, [view, uiContributions]);
 
   const activeTitle = useMemo(() => {
     for (const ws of workspaces) {
@@ -966,24 +1023,19 @@ export function App() {
         )}
 
         <div className="sidebar-foot">
-          <button
-            type="button"
-            className={`nav ghost-btn ${view === "extensions" ? "active" : ""}`}
-            onClick={() => setView("extensions")}
-          >
-            <Boxes size={16} /> <span>扩展</span>
-          </button>
-          <button
-            type="button"
-            className={`nav ghost-btn ${view === "settings" ? "active" : ""}`}
-            onClick={() => {
-              setView("settings");
-              void loadSettings();
-              void refreshUsage(activeId);
-            }}
-          >
-            <SettingsIcon size={16} /> <span>设置</span>
-          </button>
+          {menuViews().map((def) => {
+            const Icon = def.icon;
+            return (
+              <button
+                key={def.id}
+                type="button"
+                className={`nav ghost-btn ${view === def.id ? "active" : ""}`}
+                onClick={() => openView(def.id)}
+              >
+                <Icon size={16} /> <span>{def.label}</span>
+              </button>
+            );
+          })}
           <div className="status-pill" title={status}>
             {status}
           </div>
@@ -1018,11 +1070,7 @@ export function App() {
             className="title"
             title={view === "chat" ? activeTitle : undefined}
           >
-            {view === "chat"
-              ? activeTitle
-              : view === "settings"
-                ? "设置"
-                : "扩展"}
+            {view === "chat" ? activeTitle : viewLabel(view)}
           </div>
           <div className="thread-actions" data-aluka-drag="no-drag">
             <button
@@ -1121,11 +1169,13 @@ export function App() {
 
         {view === "extensions" && (
           <ExtensionsView
-            onToast={toast}
-            onSettingsChanged={loadSettings}
             onBack={() => void showChat()}
           />
         )}
+
+        {activePluginContribution ? (
+          <PluginPanel contribution={activePluginContribution} />
+        ) : null}
       </section>
 
       <WindowResizeHandle />

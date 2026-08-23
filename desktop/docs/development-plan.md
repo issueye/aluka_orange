@@ -291,6 +291,7 @@ agent_start | message_start | text_delta | tool_start | tool_end | message_end |
 - **Phase 2 状态（2026-08-18）**：扩展/skills 清单、desktop UI bridge（notify/confirm/select/input）、标题栏 Extensions 面板；开发启动默认加载 greet/guard。  
 - **Phase 3 状态（2026-08-18）**：Settings 全页；本地路径包；models.json 只读预览；**npm/file: 包装 install → agent/npm-packages**（优先 `aluka install`，失败回退 `npm`）。  
 - **Phase 4 状态（2026-08-18）**：系统托盘；`npm run build:gui`；`scripts/smoke.ps1`；可选更新检查。
+- **2026-08-22**：移除 pi 生态插件市场（`searchPackages` / `installNpmPackage` / `listInstalledPackages` / `removeNpmPackage`、`package-market.ts`、`packages.ts`、扩展页「发现/已安装」页签），并清除相关兼容（package.json `pi.extensions`、agent/npm-packages 目录）；扩展管理回归本地路径包（`extraExtensions`）。
 
 ---
 
