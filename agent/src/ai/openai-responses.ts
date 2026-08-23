@@ -268,7 +268,7 @@ async function run(
     completedOutput = envelope?.output;
     applyCompletedOutput(completedOutput, content, toolBuffers, stream);
   } else {
-    for await (const frame of readSseEvents(response.body)) {
+    for await (const frame of readSseEvents(response.body, options.signal)) {
       if (frame.data === "[DONE]") break;
       let event: ResponsesEvent;
       try {

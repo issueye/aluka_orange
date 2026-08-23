@@ -159,9 +159,10 @@ function streamAnthropicNative(
       };
     },
 
-    /** 模拟异步迭代器：将完整结果逐块产出 */
+    /** 模拟异步迭代器：将完整结果逐块产出（signal 中止时提前结束） */
     async *[Symbol.asyncIterator]() {
       const message = await this.result();
+      if (options.signal?.aborted) return;
       yield { type: "start" as const };
       for (const block of message.content) {
         if (block.type === "text") {

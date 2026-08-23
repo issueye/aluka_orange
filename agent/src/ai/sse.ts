@@ -76,12 +76,27 @@ export type SseFrame = { event?: string; data: string };
  * 从 ReadableStream 中读取 SSE 帧（event + data）
  *
  * Responses API 同时发送 `event:` 与 `data:`；Chat Completions 通常只有 `data:`。
+ * signal 用于「停止对话」：中止时立即 cancel reader，让读取循环提前自然结束
+ * （不再卡在等待下一个 chunk；provider 收到自然结束后收尾退出）。
  */
-export async function* readSseEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+export async function* readSseEvents(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<SseFrame> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let eventName: string | undefined;
+
+  const abortListener = () => {
+    try {
+      reader.cancel();
+    } catch {
+      /* ignore */
+    }
+  };
+  if (signal?.aborted) abortListener();
+  else signal?.addEventListener("abort", abortListener, { once: true });
 
   const consumeLine = function* (raw: string): Generator<SseFrame> {
     const line = raw.trimEnd();
@@ -98,24 +113,39 @@ export async function* readSseEvents(body: ReadableStream<Uint8Array>): AsyncGen
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newline: number;
-    while ((newline = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      yield* consumeLine(line);
+  try {
+    while (true) {
+      if (signal?.aborted) return;
+      let readResult: { done: boolean; value?: Uint8Array } | undefined;
+      try {
+        readResult = (await reader.read()) as { done: boolean; value?: Uint8Array };
+      } catch (reason) {
+        if (signal?.aborted) return; // 中止引发的读取错误：自然结束
+        throw reason;
+      }
+      const { done, value } = readResult;
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        yield* consumeLine(line);
+      }
     }
+    const leftover = buffer.trim();
+    if (leftover) yield* consumeLine(leftover);
+  } finally {
+    if (signal) signal.removeEventListener("abort", abortListener);
   }
-  const leftover = buffer.trim();
-  if (leftover) yield* consumeLine(leftover);
 }
 
 /** 只产出 data 行（Chat Completions 兼容） */
-export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  for await (const frame of readSseEvents(body)) {
+export async function* readSse(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
+  for await (const frame of readSseEvents(body, signal)) {
     yield frame.data;
   }
 }

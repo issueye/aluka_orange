@@ -174,8 +174,8 @@ async function run(
   let usage = { input: 0, output: 0, totalTokens: 0 };
   let stopReason: AssistantMessage["stopReason"] = "stop";
 
-  // 解析 SSE 数据流
-  for await (const line of readSse(response.body)) {
+  // 解析 SSE 数据流（signal 中止时读取立即结束，停止对话无需等下一个 chunk）
+  for await (const line of readSse(response.body, options.signal)) {
     if (line === "[DONE]") break;
     let chunk: OpenAIChunk;
     try {
