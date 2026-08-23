@@ -131,11 +131,18 @@ export async function* readSseEvents(
       while ((newline = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
-        yield* consumeLine(line);
+        // 不用 yield*：aluka 运行时对 generator 委托的实现会读取 .value 抛 TypeError
+        for (const frame of consumeLine(line)) {
+          yield frame;
+        }
       }
     }
     const leftover = buffer.trim();
-    if (leftover) yield* consumeLine(leftover);
+    if (leftover) {
+      for (const frame of consumeLine(leftover)) {
+        yield frame;
+      }
+    }
   } finally {
     if (signal) signal.removeEventListener("abort", abortListener);
   }
