@@ -96,3 +96,28 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+
+/* —— 收缩/展开 —— */
+.aluka-plugin-todo__head {
+  justify-content: flex-start;
+}
+.aluka-plugin-todo__toggle {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--link);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+.aluka-plugin-todo__toggle:hover {
+  background: var(--hover-fill);
+}
+.aluka-plugin-todo__title {
+  flex: 1;
+}
+.aluka-plugin-todo.is-collapsed .aluka-plugin-todo__list,
+.aluka-plugin-todo.is-collapsed .aluka-plugin-todo__empty {
+  display: none;
+}

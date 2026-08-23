@@ -252,7 +252,17 @@ registerRPC("pluginUiUnload", (params: { contributionId?: string }) => {
   void unloadPluginComponent(params.contributionId.trim());
   return { started: true as const };
 });
-registerRPC("reloadExtensions", () => requireHost().reloadExtensions());
+registerRPC("reloadExtensions", async () => {
+  const result = await requireHost().reloadExtensions();
+  // 扩展重载：丢弃旧组件定义（实例缓存不感知扩展重载，旧定义会持续到卸载）
+  try {
+    const core = await import("./plugin-ui-core.tsx");
+    core.clearAllComponents();
+  } catch {
+    /* Node 桥形态：组件未在本地缓存，无需清理主进程 */
+  }
+  return result;
+});
 registerRPC("listSkills", () => requireHost().listSkills());
 registerRPC("listPrompts", () => requireHost().listPrompts());
 registerRPC("listLocalPackages", () => requireHost().listLocalPackages());

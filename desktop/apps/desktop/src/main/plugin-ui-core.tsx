@@ -142,3 +142,15 @@ export function unloadComponent(params: {
   instances.delete(params.contributionId);
   return { ok: true, state };
 }
+
+/** 清理所有组件实例（扩展重载时丢弃旧定义） */
+export function clearAllComponents(): void {
+  for (const params of [...instances.keys()]) {
+    try {
+      instances.get(params)?.instance.unmount?.(instances.get(params)!.ctx);
+    } catch {
+      /* ignore */
+    }
+  }
+  instances.clear();
+}

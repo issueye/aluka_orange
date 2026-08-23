@@ -26,13 +26,27 @@ const component: PluginComponent = {
     const all = loadItems();
     const items = showDone ? all : all.filter((i) => !i.done);
     const open = all.filter((i) => !i.done).length;
+    // 折叠状态存 ctx.state（默认折叠：避免占高；恢复/卸载后状态经 serialize/restore 保留）
+    const collapsed = ctx.state.collapsed !== false;
+    const hasItems = items.length > 0;
     return (
-      <Card className="aluka-plugin-todo">
+      <Card className={"aluka-plugin-todo" + (collapsed ? " is-collapsed" : " is-expanded")}>
         <div className="aluka-plugin-todo__head">
+          <button
+            type="button"
+            className="aluka-plugin-todo__toggle"
+            data-aluka-action="toggle"
+            aria-label={collapsed ? "展开待办列表" : "收起待办列表"}
+          >
+            {hasItems ? (collapsed ? "▾ 展开" : "▴ 收起") : null}
+          </button>
           <span className="aluka-plugin-todo__title">待办 {open}/{all.length}</span>
           <Button action="clear" className="aluka-plugin-todo__action">清理已完成</Button>
         </div>
-        {items.length > 0 ? (
+        {!hasItems && !collapsed ? (
+          <div className="aluka-plugin-todo__empty">暂无待办 · 输入 /todo add 添加</div>
+        ) : null}
+        {hasItems && !collapsed ? (
           <ul className="aluka-plugin-todo__list">
             {items.slice(0, maxItems).map((item) => (
               <li key={item.id} className={"aluka-plugin-todo__item is-" + (item.done ? "done" : "pending")}>
@@ -44,13 +58,15 @@ const component: PluginComponent = {
               </li>
             ))}
           </ul>
-        ) : (
-          <div className="aluka-plugin-todo__empty">暂无待办 · 输入 /todo add 添加</div>
-        )}
+        ) : null}
       </Card>
     );
   },
   actions: {
+    toggle: async (ctx) => {
+      ctx.state.collapsed = ctx.state.collapsed !== false ? false : true;
+      ctx.changed();
+    },
     done: async (ctx, payload) => {
       const id = Number((payload as { id?: unknown })?.id);
       const items = loadItems(); const item = items.find((c) => c.id === id);
@@ -58,5 +74,7 @@ const component: PluginComponent = {
     },
     clear: async (ctx) => { saveItems(loadItems().filter((i) => !i.done)); ctx.changed(); },
   },
+  serialize: (ctx) => ctx.state,
+  restore: (ctx, state) => { ctx.state = state ?? {}; },
 };
 export default component;
