@@ -570,21 +570,25 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     return next;
   }
 
-  let loaded = await loadExtensions({
-    cwd,
-    extraPaths: resolveExtraPaths(cwd, settings, opts),
-  }).catch((error) => ({
-    extensions: [],
-    errors: [{ path: "loadExtensions", error: error instanceof Error ? error.message : String(error) }],
-    runtime: createExtensionRuntime(),
-  }));
-  /** 扩展事件总线（常驻：扩展重载只换 runner，总线不换，订阅持续有效） */
+  /** 扩展事件总线（常驻：扩展重载只换 runner，总线不换，订阅持续有效）。
+   * 必须传给 loadExtensions：refreshData 等扩展 API 发事件用的就是这条总线，
+   * 不传则 loadExtensions 内部自建，宿主订阅将收不到信号。 */
   const extensionEvents = createEventBus();
   // slot_data_changed：扩展 refreshData 信号 → 投影为桌面事件（宿主据此重渲染组件档）
   extensionEvents.on("slot_data_changed", (payload) => {
     const id = (payload as { id?: string } | undefined)?.id;
     if (id) void emitDesktop({ type: "slot_data_changed", sessionId: "", contributionId: id });
   });
+
+  let loaded = await loadExtensions({
+    cwd,
+    extraPaths: resolveExtraPaths(cwd, settings, opts),
+    events: extensionEvents,
+  }).catch((error) => ({
+    extensions: [],
+    errors: [{ path: "loadExtensions", error: error instanceof Error ? error.message : String(error) }],
+    runtime: createExtensionRuntime(),
+  }));
   const sessionDir = () => getSessionsDir(cwd, agentDir);
 
   let session = wireSession(SessionManager.inMemory(cwd));
@@ -839,6 +843,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     loaded = await loadExtensions({
       cwd,
       extraPaths: resolveExtraPaths(cwd, settings, opts),
+      events: extensionEvents,
     });
     runner = new ExtensionRunner(
       loaded.extensions,
