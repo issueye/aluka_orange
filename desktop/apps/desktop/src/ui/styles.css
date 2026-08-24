@@ -1474,8 +1474,6 @@ select {
 
 /* 附件按钮：与发送按钮同尺寸的方形点击区 */
 .composer-attach-btn {
-  width: 28px;
-  height: 28px;
   border-radius: 8px;
 }
 
@@ -2373,7 +2371,12 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  padding: 14px 16px;
+}
+
+.settings-row__workcard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-row:not(.settings-row-last):not(:last-child)::after {
@@ -2383,7 +2386,6 @@ select {
   right: 16px;
   bottom: 0;
   height: 1px;
-  background: var(--border-subtle);
   pointer-events: none;
 }
 
@@ -2405,10 +2407,18 @@ select {
   padding-bottom: 10px;
 }
 
+.settings-row-item {
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-direction: column;
+}
+
 .settings-row-copy {
-  width: 100%;
-  min-width: 200px;
-  max-width: 400px;  
+  width: 180px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .settings-row-title {
@@ -2726,6 +2736,7 @@ select {
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
+  margin-bottom: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--card);

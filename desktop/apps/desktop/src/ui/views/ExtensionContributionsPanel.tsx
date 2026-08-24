@@ -30,7 +30,7 @@ export function ExtensionContributionsPanel() {
           const isDisabled = disabled.includes(id);
           return (
             <div key={id} className="settings-row" data-testid={`contribution-${id}`}>
-              <div className="settings-row-copy">
+              <div className="settings-row-item">
                 <div className="settings-row-title">
                   {contribution.title}
                   <span className="settings-meta"> · {id}</span>

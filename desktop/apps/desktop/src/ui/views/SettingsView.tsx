@@ -209,7 +209,7 @@ export function SettingsView(props: {
                 <h2 className="settings-section-label">工作目录</h2>
                 <div className="settings-card">
                   <div className={`settings-row settings-row-col${props.workspaces.length ? "" : " settings-row-last"}`}>
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">当前目录（cwd）</div>
                       <div className="settings-row-desc">
                         Agent 运行时的工作目录，影响相对路径、技能与本地扩展解析。留空并保存不会改路径；新对话未选择时使用临时目录。
@@ -233,7 +233,7 @@ export function SettingsView(props: {
                   </div>
                   {props.workspaces.length ? (
                     <div className="settings-row settings-row-col settings-row-last">
-                      <div className="settings-row-copy">
+                      <div className="settings-row__workcard">
                         <div className="settings-row-title">快速切换</div>
                         <div className="settings-row-desc">点击切换到已添加的工作区并恢复最近会话；悬停行可移除（不删除磁盘文件）。</div>
                         <ul className="ws-settings-list">
@@ -267,7 +267,7 @@ export function SettingsView(props: {
                 <h2 className="settings-section-label">模型与密钥</h2>
                 <div className="settings-card">
                   <div className="settings-row settings-row-col settings-row-last">
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">全局回退 API Key</div>
                       <div className="settings-row-desc">
                         写入 settings.json，用作各供应商密钥的全局回退。
@@ -319,7 +319,7 @@ export function SettingsView(props: {
                 <h2 className="settings-section-label">主题</h2>
                 <div className="settings-card">
                   <div className="settings-row settings-row-compact settings-row-last">
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">深色主题</div>
                       <div className="settings-row-desc">关闭后切换为浅色主题，立即预览；保存后写入设置。</div>
                     </div>
@@ -340,7 +340,7 @@ export function SettingsView(props: {
                 <h2 className="settings-section-label">界面尺寸</h2>
                 <div className="settings-card">
                   <div className="settings-row settings-row-col settings-row-last">
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">侧栏宽度</div>
                       <div className="settings-row-desc">
                         拖动调节左侧栏宽度（{SIDEBAR_WIDTH_MIN}–{SIDEBAR_WIDTH_MAX}px），调节即时生效，保存后写入设置。下图按实际像素比例预览。
@@ -404,7 +404,7 @@ export function SettingsView(props: {
                 <h2 className="settings-section-label">当前会话</h2>
                 <div className="settings-card">
                   <div className="settings-row settings-row-col settings-row-last">
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">Token 用量与估算费用</div>
                       <p className="settings-meta" id="usage-summary">
                         {props.usage
@@ -432,13 +432,13 @@ export function SettingsView(props: {
                 <h2 className="settings-section-label">版本</h2>
                 <div className="settings-card">
                   <div className="settings-row settings-row-col">
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">Aluka Desktop</div>
                       <div className="settings-row-desc">{props.about}</div>
                     </div>
                   </div>
                   <div className="settings-row settings-row-col settings-row-last">
-                    <div className="settings-row-copy">
+                    <div className="settings-row-item">
                       <div className="settings-row-title">更新</div>
                       <div className="settings-row-desc">
                         可选：设置环境变量 ALUKA_DESKTOP_RELEASES_URL 指向 GitHub releases/latest JSON，以启用检查更新。
