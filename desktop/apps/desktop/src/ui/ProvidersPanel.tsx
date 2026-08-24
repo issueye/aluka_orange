@@ -382,16 +382,30 @@ export function ProvidersPanel(props: {
     setModelDialog(undefined);
   }
 
-  /** 保存新供应商到 models.json */
+  /** 保存新供应商到 models.json（按钮在表单外，必填项在此手动校验） */
   async function saveProvider(e?: React.FormEvent) {
     e?.preventDefault();
+    const provider = draft.provider.trim();
+    if (!provider) {
+      props.onToast("请填写供应商 ID", "warning");
+      return;
+    }
+    if (!draft.baseUrl.trim()) {
+      props.onToast("请填写 Base URL", "warning");
+      return;
+    }
+    const modelId = draft.modelId.trim();
+    if (!modelId) {
+      props.onToast("请填写初始模型 ID", "warning");
+      return;
+    }
     setBusy(true);
     try {
       const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
-        provider: draft.provider.trim(),
+        provider,
         baseUrl: draft.baseUrl.trim(),
         api: draft.api,
-        modelId: draft.modelId.trim(),
+        modelId,
         modelName: draft.modelName.trim() || undefined,
         contextWindow: readContextWindow(draft.contextWindow),
         apiKey: draft.apiKey.trim() || undefined,
@@ -399,7 +413,7 @@ export function ProvidersPanel(props: {
       });
       setConfig(next);
       closeProviderDialog();
-      setSelectedId(draft.provider.trim());
+      setSelectedId(provider);
       props.onToast("供应商已保存", "success");
       props.onActiveChanged();
     } catch (err) {
@@ -860,7 +874,7 @@ export function ProvidersPanel(props: {
                       }}
                     />
                   ) : (
-                    <h2>{selected.builtin?.name ?? selected.custom?.provider ?? selected.id}</h2>
+                    <span>{selected.builtin?.name ?? selected.custom?.provider ?? selected.id}</span>
                   )}
                   {!selected.builtin ? (
                     <button type="button" className="prov-icon-btn" title="重命名" onClick={() => setNameEditing(true)}>
@@ -1070,7 +1084,19 @@ export function ProvidersPanel(props: {
       </div>
 
       {providerDialogOpen ? (
-        <Dialog open size="md" title="添加供应商">
+        <Dialog
+          open
+          size="md"
+          title="添加供应商"
+          footer={
+            <>
+              <Button variant="secondary" disabled={busy} onClick={closeProviderDialog}>
+                取消
+              </Button>
+              <Button disabled={busy} onClick={() => void saveProvider()}>保存</Button>
+            </>
+          }
+        >
           <form className="ui-dialog__form" onSubmit={(e) => void saveProvider(e)}>
             <Input
               label="供应商 ID"
@@ -1122,15 +1148,6 @@ export function ProvidersPanel(props: {
               onChange={(apiKey) => setDraft((d) => ({ ...d, apiKey }))}
               placeholder="可选，稍后也可单独设置"
             />
-            <div className="ui-dialog__footer">
-              <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
-                <CloudDownload size={14} /> 从接口拉取
-              </Button>
-              <Button variant="secondary" disabled={busy} onClick={closeProviderDialog}>
-                取消
-              </Button>
-              <Button type="submit" disabled={busy}>保存</Button>
-            </div>
           </form>
         </Dialog>
       ) : null}
@@ -1142,6 +1159,14 @@ export function ProvidersPanel(props: {
           title={modelDialog === "edit"
             ? `编辑模型 · ${draft.provider}`
             : `添加模型 · ${draft.provider}`}
+          footer={
+            <>
+              <Button variant="secondary" disabled={busy} onClick={closeModelDialog}>
+                取消
+              </Button>
+              <Button disabled={busy} onClick={() => void saveModel()}>保存</Button>
+            </>
+          }
         >
           <form className="ui-dialog__form" onSubmit={(e) => void saveModel(e)}>
             <Input
@@ -1167,23 +1192,25 @@ export function ProvidersPanel(props: {
               onChange={(contextWindow) => setDraft((d) => ({ ...d, contextWindow }))}
               placeholder="128K"
             />
-            <div className="ui-dialog__footer">
-              {modelDialog === "add" ? (
-                <Button variant="secondary" disabled={busy} onClick={() => void fetchModelsFromDraft()}>
-                  <CloudDownload size={14} /> 从接口拉取
-                </Button>
-              ) : null}
-              <Button variant="secondary" disabled={busy} onClick={closeModelDialog}>
-                取消
-              </Button>
-              <Button type="submit" disabled={busy}>保存</Button>
-            </div>
           </form>
         </Dialog>
       ) : null}
 
       {fetchPicker ? (
-        <Dialog open size="lg" title="选择要导入的模型" cardClassName="model-pick-card">
+        <Dialog
+          open
+          size="lg"
+          title="选择要导入的模型"
+          cardClassName="model-pick-card"
+          footer={
+            <>
+              <Button variant="secondary" disabled={busy} onClick={() => setFetchPicker(undefined)}>取消</Button>
+              <Button disabled={busy} onClick={() => void importFetchedModels()}>
+                导入选中
+              </Button>
+            </>
+          }
+        >
           <p className="ui-dialog__message">
             来自 OpenAI 兼容 GET /models，已存在的会标为已添加。
             显示 {visibleRemoteModels(fetchPicker).length} / 共 {fetchPicker.models.length} 个。
@@ -1247,17 +1274,21 @@ export function ProvidersPanel(props: {
               );
             })}
           </ul>
-          <div className="ui-dialog__footer">
-            <Button variant="secondary" disabled={busy} onClick={() => setFetchPicker(undefined)}>取消</Button>
-            <Button disabled={busy} onClick={() => void importFetchedModels()}>
-              导入选中
-            </Button>
-          </div>
         </Dialog>
       ) : null}
 
       {builtinKeyDialog ? (
-        <Dialog open size="md" title={`${builtinKeyDialog.name} · API 密钥`}>
+        <Dialog
+          open
+          size="md"
+          title={`${builtinKeyDialog.name} · API 密钥`}
+          footer={
+            <>
+              <Button variant="secondary" disabled={busy} onClick={() => setBuiltinKeyDialog(undefined)}>取消</Button>
+              <Button disabled={busy} onClick={() => void enableBuiltin(builtinKeyDialog, keyDraft)}>保存</Button>
+            </>
+          }
+        >
           <form className="ui-dialog__form" onSubmit={(e) => void enableBuiltin(builtinKeyDialog, keyDraft, e)}>
             <p className="ui-dialog__message hint">
               {config?.providers.some((p) => p.provider === builtinKeyDialog.id)
@@ -1276,10 +1307,6 @@ export function ProvidersPanel(props: {
               onChange={setKeyDraft}
               placeholder="sk-…（可留空，稍后在自定义列表中设置）"
             />
-            <div className="ui-dialog__footer">
-              <Button variant="secondary" disabled={busy} onClick={() => setBuiltinKeyDialog(undefined)}>取消</Button>
-              <Button type="submit" disabled={busy}>保存</Button>
-            </div>
           </form>
         </Dialog>
       ) : null}
