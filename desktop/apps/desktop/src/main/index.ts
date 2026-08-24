@@ -9,7 +9,7 @@ import { app, createWindow, createTray, setAssetDir, globalShortcut, shell } fro
 import { createDesktopHost, type DesktopHost } from "../host/index.ts";
 import { pickFolder } from "../host/choose-folder.ts";
 import { startHttpServer, type RpcHandler } from "./http-server.ts";
-import { prewarmPluginUi, renderPluginComponent, runPluginComponentAction, unloadPluginComponent } from "./plugin-ui.ts";
+import { prewarmPluginUi, refreshPluginComponent, renderPluginComponent, runPluginComponentAction, unloadPluginComponent } from "./plugin-ui.ts";
 import { PROTOCOL_VERSION } from "../shared/contracts.ts";
 import { VERSION } from "../../../../../agent/src/config.ts";
 import { coerceApi } from "../../../../../agent/src/ai/types.ts";
@@ -523,6 +523,17 @@ createDesktopHost({
   emit: (name, data) => {
     try {
       emitToUi(name, data);
+      // 扩展 refreshData 信号：重渲染对应组件档（保 UI 状态），结果经 pluginui.render 推送
+      if (name === "runtime.event") {
+        const event = data as { type?: string; contributionId?: string };
+        if (event?.type === "slot_data_changed" && event.contributionId) {
+          void refreshPluginComponent(event.contributionId)
+            .then((result) => {
+              if (result) emitToUi("pluginui.render", { contributionId: event.contributionId, ...result });
+            })
+            .catch(() => undefined);
+        }
+      }
     } catch (err) {
       console.error("[aluka-desktop] emit failed", name, err);
     }

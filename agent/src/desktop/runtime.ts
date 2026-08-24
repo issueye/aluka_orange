@@ -117,7 +117,8 @@ export type DesktopRuntimeEvent =
   | { type: "error"; sessionId: string; message: string }
   | { type: "extension_ui"; request: ExtensionUiRequest }
   | { type: "usage"; sessionId: string; usage: SessionUsageView }
-  | { type: "entry_added"; sessionId: string; customType: string; data?: unknown };
+  | { type: "entry_added"; sessionId: string; customType: string; data?: unknown }
+  | { type: "slot_data_changed"; sessionId: string; contributionId: string };
 
 /** 用户输入携带的图片附件（Base64 数据 + MIME 类型） */
 export interface PromptImage {
@@ -577,6 +578,13 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     errors: [{ path: "loadExtensions", error: error instanceof Error ? error.message : String(error) }],
     runtime: createExtensionRuntime(),
   }));
+  /** 扩展事件总线（常驻：扩展重载只换 runner，总线不换，订阅持续有效） */
+  const extensionEvents = createEventBus();
+  // slot_data_changed：扩展 refreshData 信号 → 投影为桌面事件（宿主据此重渲染组件档）
+  extensionEvents.on("slot_data_changed", (payload) => {
+    const id = (payload as { id?: string } | undefined)?.id;
+    if (id) void emitDesktop({ type: "slot_data_changed", sessionId: "", contributionId: id });
+  });
   const sessionDir = () => getSessionsDir(cwd, agentDir);
 
   let session = wireSession(SessionManager.inMemory(cwd));
@@ -590,7 +598,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     loaded.runtime,
     cwd,
     "print",
-    createEventBus(),
+    extensionEvents,
     desktopUi,
   );
   runner.setModel(model);
@@ -616,7 +624,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
     systemPrompt = buildSystemPrompt({
       cwd,
       skills,
-      extra: [toolSnippets(tools)],
+      extra: [toolSnippets(tools), ...runner.getSystemPromptFragments()],
     });
     runner.setSystemPrompt(systemPrompt);
     runner.bind({
@@ -837,7 +845,7 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
       loaded.runtime,
       cwd,
       "print",
-      createEventBus(),
+      extensionEvents,
       desktopUi,
     );
     runner.setModel(model);

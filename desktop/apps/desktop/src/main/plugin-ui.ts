@@ -125,6 +125,23 @@ export async function unloadPluginComponent(contributionId: string): Promise<voi
 }
 
 /**
+ * 刷新已渲染的组件档（数据变化触发；slot_data_changed 消费方）。
+ * 卸载拿回序列化状态再重渲染恢复（折叠等 UI 状态不丢）；
+ * 未渲染过的组件档不主动拉起，返回 undefined。
+ */
+export async function refreshPluginComponent(contributionId: string): Promise<RenderOutcome | undefined> {
+  const modulePath = modulePathCache.get(contributionId);
+  if (!modulePath) return undefined;
+  const core = await startEmbedded();
+  const { state } = core.unloadComponent({ contributionId });
+  const result = await core.renderContribution({ modulePath, contributionId, restored: state });
+  if (result.ok && result.html) {
+    result.html = injectPluginCss(modulePath, result.html);
+  }
+  return result;
+}
+
+/**
  * 启动预热：无条件预载嵌入内核并注册虚拟模块（react / @aluka/ui）。
  * 必须在任何插件代码 import 前完成（扩展启动期加载、组件随时加载）。
  */

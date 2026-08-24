@@ -125,12 +125,32 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // ── 系统提示词注入：任务工作流（需求分析 → 制定 TODO → 逐项执行 → 总结）──
+  // 动态片段：每次组装系统提示词时求值，顺带携带当前待办数作为上下文。
+  pi.registerSystemPrompt(() => {
+    const open = loadItems().filter((item) => !item.done).length;
+    return [
+      "## 任务执行流程（必须遵守）",
+      "",
+      "接到用户任务时，按以下顺序工作：",
+      "1. **需求分析**：动手前先用一小段文字说明任务目标、约束与边界，确认理解无误；",
+      "2. **制定计划**：用 todo_add 把执行步骤拆成 TODO 条目（每步一条、可独立验证）——未制定计划前禁止开始执行任务步骤；",
+      "3. **逐项执行**：严格按计划顺序执行，每完成一项立刻用 todo_done 标记对应编号；",
+      "4. **收尾总结**：全部完成后用 todo_list 确认无未完成项，再向用户汇报结果。",
+      "",
+      `当前待办：${open} 项未完成。`,
+      "例外：纯问答、闲聊或一步能完成且无副作用的小改动，可不建计划直接回答。",
+      "计划中途有变或任务较大时，随时补加 TODO 条目，保持计划与执行同步。",
+    ].join("\n");
+  });
+
   // ── 命令：/todo add|list|done|clear ──
   pi.registerCommand("todo", {
     description: "待办管理：/todo add <文本> | list | done <编号> | clear",
     handler: async (args, ctx) => {
       const parts = (args ?? "").trim().split(/\s+/);
       const op = parts[0] ?? "list";
+      items = loadItems(); // 以盘为准：组件档 action 等其他写方可能已修改
 
       if (op === "add") {
         const text = parts.slice(1).join(" ").trim();
@@ -186,15 +206,19 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "todo_add",
     label: "Todo Add",
-    description: "向 TODO 列表添加任务（用户表达需要记录/跟进事项时使用）",
+    description:
+      "向 TODO 列表添加任务条目。任务工作流的计划入口：接到任务必须先做需求分析，再用本工具制定计划，之后才能开始执行",
+    promptSnippet: "添加/更新 TODO 计划（任务工作流：需求分析 → 制定计划 → 逐项执行 → 总结）",
     parameters: Type.Object({
       text: Type.String({ description: "任务内容" }),
     }),
     async execute(_id, params) {
+      items = loadItems(); // 以盘为准：组件档 action 等其他写方可能已修改
       const item: Todo = { id: nextId(items), text: params.text, done: false, createdAt: Date.now() };
       items.push(item);
       saveItems(items);
       pushTodoItem(item);
+      pi.refreshData("todo-app/board");
       return {
         content: [{ type: "text", text: `已添加任务 #${item.id}：${item.text}（当前待办 ${openCount()} 项）` }],
         details: { id: item.id },
@@ -208,6 +232,7 @@ export default function (pi: ExtensionAPI) {
     description: "列出当前 TODO 列表（未完成在前、已完成在后），返回文本列表",
     parameters: Type.Object({}),
     async execute() {
+      items = loadItems(); // 以盘为准
       if (!items.length) {
         return { content: [{ type: "text", text: "暂无待办任务" }], details: {} };
       }
@@ -232,6 +257,7 @@ export default function (pi: ExtensionAPI) {
       id: Type.Number({ description: "任务编号（todo_list 中的 #ID）" }),
     }),
     async execute(_id, params) {
+      items = loadItems(); // 以盘为准：组件档 action 等其他写方可能已修改
       const item = items.find((candidate) => candidate.id === params.id);
       if (!item) {
         return {
@@ -242,6 +268,7 @@ export default function (pi: ExtensionAPI) {
       item.done = true;
       saveItems(items);
       pushTodoItem(item);
+      pi.refreshData("todo-app/board");
       return {
         content: [{ type: "text", text: `已完成 #${item.id}：${item.text}（剩余待办 ${openCount()} 项）` }],
         details: { id: item.id, found: true },
@@ -255,9 +282,11 @@ export default function (pi: ExtensionAPI) {
     description: "清理所有已完成的 TODO 任务",
     parameters: Type.Object({}),
     async execute() {
+      items = loadItems(); // 以盘为准
       const removed = items.length - openCount();
       items = items.filter((item) => !item.done);
       saveItems(items);
+      pi.refreshData("todo-app/board");
       return {
         content: [{ type: "text", text: removed ? `已清理 ${removed} 个已完成任务` : "没有已完成的任务可清理" }],
         details: { removed },
