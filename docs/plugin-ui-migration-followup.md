@@ -1,7 +1,7 @@
 # 插件 UI 形态收敛：后续修改计划
 
 > 配套文档：`docs/aluka-build-warnings-analysis.md`（构建告警分析）。
-> 状态：第 0 步（核心改造）已完成——嵌入内核改为常量动态 import 直接加载 TSX，打包版实测通过；本文档规划剩余的「逐步」收敛工作。
+> 状态：**全部完成**（2026-08-24，随插件 UI 修复一起落地）——M1（删 node 桥）、M2（删 ssr-embedded 全链路）、M3（默认 importer 改为抛错）、M5（注释/文档清理）均已执行；`plugin-ui.ts` 收敛为单一嵌入式形态，插件组件渲染仅依赖模块图内核 + 虚拟模块注册。下方 M1/M2/M3 章节为历史方案记录，已作状态标注；M4 属运行时项目（aluka_lang），另行评估。
 
 ---
 
@@ -43,7 +43,7 @@ M1 与 M2 相互独立但建议同批执行；M3 可在 M1/M2 后顺手做。
 
 ---
 
-## 3. M1：删除 node 桥形态
+## 3. M1：删除 node 桥形态 ✅ 已完成
 
 ### 目的
 
@@ -75,7 +75,7 @@ M1 与 M2 相互独立但建议同批执行；M3 可在 M1/M2 后顺手做。
 
 ---
 
-## 4. M2：删除 ssr-embedded.mjs 全链路
+## 4. M2：删除 ssr-embedded.mjs 全链路 ✅ 已完成
 
 ### 目的
 
@@ -100,7 +100,7 @@ M1 与 M2 相互独立但建议同批执行；M3 可在 M1/M2 后顺手做。
 
 ---
 
-## 5. M3：默认 importer 改为抛错（消除 plugin-ui-core 动态 import 告警）
+## 5. M3：默认 importer 改为抛错（消除 plugin-ui-core 动态 import 告警） ✅ 已完成
 
 `src/main/plugin-ui-core.tsx:26-28` 现状：
 
@@ -130,7 +130,7 @@ let importer: (modulePath: string) => Promise<unknown> = () =>
 
 ---
 
-## 7. M5：文档与注释清理
+## 7. M5：文档与注释清理 ✅ 已完成
 
 - `plugin-ui.ts` / `plugin-ui-core.tsx` / `build-gui.mjs` 内关于「node 桥 / ssr-embedded / 自动执行」的注释，随 M1/M2 一并改写；
 - 本文档与 `aluka-build-warnings-analysis.md` 的 §5（ssr-embedded 缺失）在 M2 后更新为「已移除」；

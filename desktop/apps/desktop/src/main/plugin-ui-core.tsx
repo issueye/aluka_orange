@@ -1,17 +1,15 @@
 /**
- * 组件档渲染核心（双载体运行时共用）
+ * 组件档渲染核心（主进程嵌入式内核，单一载体）
  *
- * - Node 子进程版（scripts/ssr-server.mjs）：经 jiti 加载本文件（alias 提供 react/@aluka/ui）；
- * - 嵌入版：aluka 主进程常量动态 import 本文件（dev 走运行时 TSX 加载、打包版编入
- *   payload；ssr-embedded.mjs 预构建产物仅作旧运行时回退）。插件组件由 importer
- *   经 aluka 原生编译加载。
+ * - 主进程常量动态 import 本文件（dev 走运行时 TSX 加载、打包版编入 payload）；
+ *   插件组件由 importer 经 aluka 原生 import 加载（虚拟模块提供 react/@aluka/ui）。
  *
  * 本文件不含 Node/HTTP 依赖：实例缓存 + 渲染 + action + 卸载；
- * 组件导入器由 initCore 注入（jiti 或 aluka 原生 import）。
+ * 组件导入器由 initCore 注入（aluka 原生 import）。
  */
 import { createElement } from "react";
 // 浏览器变体引用 stream/crypto 等 Node 内置，aluka 运行时（单文件 exe）无法解析 node 变体；
-// server.browser 提供同一 renderToString API，Node 子进程（ssr-server.mjs）下同样可用。
+// server.browser 提供同一 renderToString API，嵌入式内核下同样可用。
 import { renderToString } from "react-dom/server.browser";
 import type {
   PluginComponent,
@@ -26,9 +24,10 @@ interface ComponentEntry {
 
 const instances = new Map<string, ComponentEntry>();
 
-/** 模块导入器（jiti 或 aluka 原生 import；支持插件 TSX 源码） */
-let importer: (modulePath: string) => Promise<unknown> = (modulePath) =>
-  Promise.resolve().then(() => import(modulePath));
+/** 模块导入器（aluka 原生 import；startEmbedded 注册虚拟模块后立即 initCore 注入） */
+let importer: (modulePath: string) => Promise<unknown> = () => {
+  throw new Error("plugin-ui 核心未初始化：initCore 未注入组件导入器");
+};
 
 export function initCore(importFn: (modulePath: string) => Promise<unknown>): void {
   importer = importFn;

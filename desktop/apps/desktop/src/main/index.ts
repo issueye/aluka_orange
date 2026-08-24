@@ -9,7 +9,7 @@ import { app, createWindow, createTray, setAssetDir, globalShortcut, shell } fro
 import { createDesktopHost, type DesktopHost } from "../host/index.ts";
 import { pickFolder } from "../host/choose-folder.ts";
 import { startHttpServer, type RpcHandler } from "./http-server.ts";
-import { prewarmPluginUi, renderPluginComponent, runPluginComponentAction, stopSsr, unloadPluginComponent } from "./plugin-ui.ts";
+import { prewarmPluginUi, renderPluginComponent, runPluginComponentAction, unloadPluginComponent } from "./plugin-ui.ts";
 import { PROTOCOL_VERSION } from "../shared/contracts.ts";
 import { VERSION } from "../../../../../agent/src/config.ts";
 import { coerceApi } from "../../../../../agent/src/ai/types.ts";
@@ -308,11 +308,6 @@ registerRPC("sendPrompt", (params: { text?: string; images?: Array<{ data?: stri
 });
 registerRPC("abortPrompt", () => requireHost().abortPrompt());
 function shutdown(): void {
-  try {
-    stopSsr();
-  } catch {
-    /* ignore */
-  }
   try {
     host?.dispose();
   } catch (err) {

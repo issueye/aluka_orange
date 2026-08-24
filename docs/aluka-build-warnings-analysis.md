@@ -2,6 +2,7 @@
 
 > 适用版本：aluka 运行时可执行文件（aluka_lang 仓库）+ aluka_desktop（桌面壳工程）。
 > 生成日期：2026-08-24。本文档用于在运行时项目（`E:\code\issueye\golang\aluka_lang`）中提交问题与修复建议。
+> 现状（2026-08-24）：`ssr-embedded.mjs` 全链路与 node 桥形态已移除（plugin-ui 收敛为单一嵌入内核），第 5 条告警（ssr-embedded 缺失）已随构建脚本删除而消失；另两条「非静态动态 import」告警（`loader.ts`、`jiti.mjs`）按 §6.2 的 externals 方案继续跟踪，属运行时项目改进项。本文档正文保留作历史分析。
 
 ---
 
