@@ -133,15 +133,38 @@ export default function (pi: ExtensionAPI) {
       "## 任务执行流程（必须遵守）",
       "",
       "接到用户任务时，按以下顺序工作：",
-      "1. **需求分析**：动手前先用一小段文字说明任务目标、约束与边界，确认理解无误；",
-      "2. **制定计划**：用 todo_add 把执行步骤拆成 TODO 条目（每步一条、可独立验证）——未制定计划前禁止开始执行任务步骤；",
-      "3. **逐项执行**：严格按计划顺序执行，每完成一项立刻用 todo_done 标记对应编号；",
+      "1. **需求分析**：先输出一段「需求分析」，用几句话说明任务目标、约束与边界；",
+      "2. **制定计划**：紧接着**调用 todo_add 工具**（每步一条、可独立验证）——用文字描述计划不算完成此步骤；调用执行类工具（read/bash/write/edit 等）前必须先建计划；",
+      "3. **逐项执行**：严格按计划顺序，每完成一项立刻用 todo_done 标记对应编号；",
       "4. **收尾总结**：全部完成后用 todo_list 确认无未完成项，再向用户汇报结果。",
       "",
       `当前待办：${open} 项未完成。`,
       "例外：纯问答、闲聊或一步能完成且无副作用的小改动，可不建计划直接回答。",
       "计划中途有变或任务较大时，随时补加 TODO 条目，保持计划与执行同步。",
     ].join("\n");
+  });
+
+  // ── 计划门控：任务开始后未建计划时，拦截首个执行类工具调用（每任务最多拦一次，防死循环）──
+  // 提示词是建议，门控是强制：轻量模型跳过 todo_add 直接干活时，第一次会被
+  // 拦下并收到明确指令；「继续」场景（已有未完成计划）不拦。
+  let planReady = true;
+  let gatedThisTask = false;
+  pi.on("agent_start", () => {
+    planReady = loadItems().some((item) => !item.done); // 有未完成计划视为任务进行中
+    gatedThisTask = false;
+  });
+  pi.on("tool_call", (event) => {
+    if (event.toolName.startsWith("todo_")) {
+      if (event.toolName === "todo_add") planReady = true;
+      return;
+    }
+    if (planReady || gatedThisTask) return;
+    gatedThisTask = true;
+    return {
+      block: true,
+      reason:
+        "任务执行流程：请先用 todo_add 制定计划（每步一条，说明目标后逐条添加），然后再执行任务步骤。",
+    };
   });
 
   // ── 命令：/todo add|list|done|clear ──
