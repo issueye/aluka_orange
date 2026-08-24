@@ -29,6 +29,7 @@ import {
   sidebarAnimTimer,
   streamingRef,
   streamingThinkingRef,
+  streamingThinkingStartRef,
   timelineCache,
   toast,
 } from "./store.ts";
@@ -81,6 +82,10 @@ export async function applyOpened(opened: OpenedSession): Promise<void> {
   try {
     const leftover = streamingRef.current.trim();
     const leftoverThinking = streamingThinkingRef.current.trim();
+    const thinkingMs =
+      leftoverThinking && streamingThinkingStartRef.current
+        ? Date.now() - streamingThinkingStartRef.current
+        : undefined;
     if (leftover || leftoverThinking) {
       const prevKey = sessionKey(sessionStore.get().sessionRef.cwd, sessionStore.get().sessionRef.id);
       if (prevKey) {
@@ -94,13 +99,14 @@ export async function applyOpened(opened: OpenedSession): Promise<void> {
               role: "assistant",
               text: leftover,
               thinking: leftoverThinking || undefined,
+              thinkingMs,
               timestamp: Date.now(),
             },
           ];
         } else if (leftoverThinking && !last.thinking) {
           timelineCache[prevKey] = [
             ...prev.slice(0, -1),
-            { ...last, thinking: leftoverThinking },
+            { ...last, thinking: leftoverThinking, thinkingMs },
           ];
         }
       }
@@ -118,6 +124,7 @@ export async function applyOpened(opened: OpenedSession): Promise<void> {
     rememberTimeline(opened.cwd, opened.id, next);
     streamingRef.current = "";
     streamingThinkingRef.current = "";
+    streamingThinkingStartRef.current = 0;
     sessionStore.set({ streaming: "", thinking: "" });
     shellStore.set({ view: "chat" });
     shellStore.set((prev) => ({ settings: { ...prev.settings, cwd: opened.cwd } }));

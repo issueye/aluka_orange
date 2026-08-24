@@ -15,6 +15,7 @@ import {
   shellStore,
   streamingRef,
   streamingThinkingRef,
+  streamingThinkingStartRef,
   timelineCache,
   toast,
 } from "./store.ts";
@@ -64,6 +65,7 @@ function onRuntime(raw: unknown): void {
     if (sid) markBusy(sid, true);
     if (!isActiveEvent) return;
     streamingThinkingRef.current = "";
+    streamingThinkingStartRef.current = 0;
     sessionStore.set({ busy: true, streaming: "", thinking: "" });
     return;
   }
@@ -77,15 +79,20 @@ function onRuntime(raw: unknown): void {
     sessionStore.set({ busy: false });
     const leftover = streamingRef.current.trim();
     const leftoverThinking = streamingThinkingRef.current.trim();
+    const thinkingMs =
+      leftoverThinking && streamingThinkingStartRef.current
+        ? Date.now() - streamingThinkingStartRef.current
+        : undefined;
     streamingRef.current = "";
     streamingThinkingRef.current = "";
+    streamingThinkingStartRef.current = 0;
     sessionStore.set({ streaming: "", thinking: "" });
     if (leftover || leftoverThinking) {
       commitTimeline((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant" && last.text === leftover) {
           if (leftoverThinking && !last.thinking) {
-            return [...prev.slice(0, -1), { ...last, thinking: leftoverThinking }];
+            return [...prev.slice(0, -1), { ...last, thinking: leftoverThinking, thinkingMs }];
           }
           return prev;
         }
@@ -96,6 +103,7 @@ function onRuntime(raw: unknown): void {
             role: "assistant",
             text: leftover,
             thinking: leftoverThinking || undefined,
+            thinkingMs,
             timestamp: Date.now(),
           },
         ];
@@ -112,6 +120,7 @@ function onRuntime(raw: unknown): void {
     return;
   }
   if (event.type === "thinking_delta" && event.text) {
+    if (!streamingThinkingStartRef.current) streamingThinkingStartRef.current = Date.now();
     streamingThinkingRef.current += event.text;
     sessionStore.set({ thinking: streamingThinkingRef.current });
     return;
@@ -148,7 +157,12 @@ function onRuntime(raw: unknown): void {
     streamingRef.current = "";
     sessionStore.set({ streaming: "" });
     const thinking = (event.thinking ?? streamingThinkingRef.current).trim();
+    const thinkingMs =
+      thinking && streamingThinkingStartRef.current
+        ? Date.now() - streamingThinkingStartRef.current
+        : undefined;
     streamingThinkingRef.current = "";
+    streamingThinkingStartRef.current = 0;
     sessionStore.set({ thinking: "" });
     if (!event.text.trim() && !thinking) return;
     const item: TimelineItem = {
@@ -156,13 +170,14 @@ function onRuntime(raw: unknown): void {
       role: "assistant",
       text: event.text!,
       thinking: thinking || undefined,
+      thinkingMs,
       timestamp: Date.now(),
     };
     commitTimeline((prev) => {
       const last = prev[prev.length - 1];
       if (last?.role === "assistant" && last.text === event.text) {
         if (thinking && !last.thinking) {
-          return [...prev.slice(0, -1), { ...last, thinking }];
+          return [...prev.slice(0, -1), { ...last, thinking, thinkingMs }];
         }
         return prev;
       }

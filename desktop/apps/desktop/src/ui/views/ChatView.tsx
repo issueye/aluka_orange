@@ -6,7 +6,7 @@
  * 图片附件支持选择 / 粘贴 / 拖拽，发送时随消息一起传给 Agent。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, Copy, Folder, FolderPlus, ImagePlus, X } from "lucide-react";
+import { ArrowUp, Brain, Check, ChevronDown, Copy, Folder, FolderPlus, ImagePlus, X } from "lucide-react";
 import { rpc } from "../bridge.ts";
 import { Button, ImageViewer, LoadingBlock, Markdown, Select, Textarea } from "../components/index.ts";
 import { ContextRing } from "../components/ContextRing.tsx";
@@ -33,6 +33,14 @@ const THINKING_LEVEL_OPTIONS = [
   { value: "high", label: "思考 · 高" },
   { value: "xhigh", label: "思考 · 极高" },
 ] as const;
+
+/** 思考时长格式化：ms →「N 秒」/「M 分 N 秒」 */
+function formatThinkingDuration(ms?: number): string {
+  if (!ms || ms < 0) return "";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} 秒`;
+  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
 
 /** 将消息角色转换为中文显示标签 */
 function roleLabel(role: TimelineItem["role"], toolName?: string): string {
@@ -295,8 +303,15 @@ export function ChatView(props: {
               {item.role === "assistant" ? (
                 <>
                   {item.thinking ? (
-                    <details className="bubble-thinking" open={false}>
-                      <summary>思考过程</summary>
+                    <details className="bubble-thinking">
+                      <summary>
+                        <Brain size={14} className="bubble-thinking__icon" />
+                        <span className="bubble-thinking__label">思考过程</span>
+                        {item.thinkingMs ? (
+                          <span className="bubble-thinking__meta">· 持续了 {formatThinkingDuration(item.thinkingMs)}</span>
+                        ) : null}
+                        <ChevronDown size={14} className="bubble-thinking__chevron" />
+                      </summary>
                       <div className="bubble-thinking__body">{item.thinking}</div>
                     </details>
                   ) : null}
@@ -312,8 +327,13 @@ export function ChatView(props: {
           <div className="bubble assistant">
             <div className="role">助手</div>
             {props.thinking ? (
-              <details className="bubble-thinking" open={false}>
-                <summary>思考过程</summary>
+              <details className="bubble-thinking" open>
+                <summary>
+                  <Brain size={14} className="bubble-thinking__icon" />
+                  <span className="bubble-thinking__label">思考过程</span>
+                  <span className="bubble-thinking__meta">· 思考中…</span>
+                  <ChevronDown size={14} className="bubble-thinking__chevron" />
+                </summary>
                 <div className="bubble-thinking__body">{props.thinking}</div>
               </details>
             ) : null}

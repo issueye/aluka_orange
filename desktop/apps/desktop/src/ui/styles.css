@@ -192,34 +192,72 @@
   box-shadow: var(--shadow-panel);
 }
 
-/* —— 助手消息思考块（可折叠；默认收起，点击展开） —— */
+/* —— 助手消息思考块（轻量行内折叠：图标 + 标题 + 时长 + chevron） —— */
 
 .bubble-thinking {
-  margin: 0 0 8px;
-  border-left: 2px solid var(--border);
-  padding-left: 10px;
+  margin: 0 0 10px;
   color: var(--muted-foreground);
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: 13px;
 }
 
 .bubble-thinking summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
   user-select: none;
-  color: var(--group-label-color);
-  font-weight: 500;
+  list-style: none;
+  color: var(--muted-foreground);
   outline: none;
+  padding: 2px 0;
 }
 
-.bubble-thinking summary:hover {
-  color: var(--muted-foreground);
+.bubble-thinking summary::-webkit-details-marker,
+.bubble-thinking summary::marker {
+  display: none;
+  content: "";
+}
+
+.bubble-thinking__icon {
+  flex: none;
+  color: var(--group-label-color);
+}
+
+.bubble-thinking__label {
+  font-weight: 500;
+}
+
+.bubble-thinking__meta {
+  color: var(--group-label-color);
+  font-size: 12px;
+}
+
+.bubble-thinking__chevron {
+  flex: none;
+  margin-left: 2px;
+  color: var(--group-label-color);
+  transform: rotate(-90deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.bubble-thinking[open] .bubble-thinking__chevron {
+  transform: rotate(0deg);
+}
+
+.bubble-thinking summary:hover,
+.bubble-thinking summary:hover .bubble-thinking__icon,
+.bubble-thinking summary:hover .bubble-thinking__chevron {
+  color: var(--foreground);
 }
 
 .bubble-thinking__body {
-  margin-top: 6px;
+  margin: 6px 0 2px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-subtle);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 240px;
+  line-height: 1.6;
+  max-height: 320px;
   overflow: auto;
 }
 

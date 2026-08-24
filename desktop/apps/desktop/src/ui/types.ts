@@ -19,6 +19,8 @@ export type TimelineItem = {
   text: string;
   /** 助手消息的思考内容（ThinkingContent 合并文本） */
   thinking?: string;
+  /** 思考耗时（毫秒；仅流式会话可测，历史恢复无此数据） */
+  thinkingMs?: number;
   /** 用户消息携带的图片附件 */
   images?: TimelineImage[];
   /** 工具调用时的工具名（仅 tool 类型） */

@@ -213,6 +213,8 @@ export function rememberTimeline(cwd: string | undefined, id: string | undefined
 export const streamingRef = { current: "" };
 /** 正在流式输出的思考内容（thinking_delta 累积，message_end 并入条目） */
 export const streamingThinkingRef = { current: "" };
+/** 思考开始时间戳（流式时长统计；0 表示未在思考） */
+export const streamingThinkingStartRef = { current: 0 };
 /** 选择文件夹弹窗进行中（防重复触发） */
 export const pickingFolderRef = { current: false };
 /** 侧栏动画定时器句柄 */
