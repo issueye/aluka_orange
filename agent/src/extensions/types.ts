@@ -839,6 +839,11 @@ export interface ExtensionAPI {
     tool: ToolDefinition<TParams, TDetails, TState>,
   ): void;
   registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
+  /**
+   * 注册系统提示词片段：组装系统提示词时按注册顺序并入（每次重建工具/重载扩展后生效）。
+   * 传函数可在每次组装时动态生成（如读取插件设置）。
+   */
+  registerSystemPrompt(fragment: string | (() => string)): void;
   /** 声明式 UI 贡献（v1/v2：宿主槽位/面板） */
   contributes(ui: UiContribution): void;
   /**
@@ -937,6 +942,8 @@ export interface Extension {
   uiContributions: UiContribution[];
   /** 槽位数据提供者（contributesData() 收集；getSlotData RPC 消费） */
   slotData: Map<string, SlotDataProvider>;
+  /** 系统提示词片段（registerSystemPrompt() 收集；组装系统提示词时按注册顺序并入） */
+  systemPrompts: Array<string | (() => string)>;
 }
 
 /**

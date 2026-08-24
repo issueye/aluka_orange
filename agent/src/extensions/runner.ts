@@ -189,6 +189,25 @@ export class ExtensionRunner {
     return [...tools.values()];
   }
 
+  /**
+   * 收集所有扩展注册的系统提示词片段（registerSystemPrompt）。
+   * 按扩展加载顺序 + 注册顺序展开；函数片段在此刻调用求值。
+   */
+  getSystemPromptFragments(): string[] {
+    const fragments: string[] = [];
+    for (const extension of this.extensions) {
+      for (const fragment of extension.systemPrompts) {
+        try {
+          const value = typeof fragment === "function" ? fragment() : fragment;
+          if (typeof value === "string" && value.trim()) fragments.push(value);
+        } catch (error) {
+          console.warn(`[extension] ${extension.path} systemPrompt 片段求值失败`, error);
+        }
+      }
+    }
+    return fragments;
+  }
+
   /** 获取所有活跃工具的名称列表 */
   getActiveToolNames(): string[] {
     return this.getRegisteredTools().map((tool) => tool.definition.name);

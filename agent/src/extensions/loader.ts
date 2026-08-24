@@ -528,6 +528,7 @@ function createEmptyExtension(file: string): Extension {
     shortcuts: new Map(),
     uiContributions: [],
     slotData: new Map(),
+    systemPrompts: [],
   };
 }
 
@@ -560,6 +561,14 @@ function createExtensionAPI(
     registerTool(tool: ToolDefinition) {
       extension.tools.set(tool.name, { definition: tool, sourceInfo: extension.sourceInfo });
       runtime.refreshTools();
+    },
+    /** 注册系统提示词片段（组装系统提示词时按注册顺序并入） */
+    registerSystemPrompt(fragment: string | (() => string)) {
+      if (typeof fragment === "string" ? !fragment.trim() : typeof fragment !== "function") {
+        console.warn(`[extension] ${extension.path} registerSystemPrompt 被忽略（需非空字符串或函数）`);
+        return;
+      }
+      extension.systemPrompts.push(fragment);
     },
     /** 注册斜杠命令 */
     registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">) {

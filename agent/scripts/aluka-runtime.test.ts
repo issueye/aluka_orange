@@ -175,6 +175,8 @@ describe("native ts extension factory", () => {
     const names: string[] = [];
     mod.default({
       on() {},
+      contributes() {},
+      contributesData() {},
       registerTool(tool: { name: string }) {
         names.push(tool.name);
       },
