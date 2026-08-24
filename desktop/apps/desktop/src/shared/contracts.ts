@@ -42,6 +42,8 @@ export interface TimelineItemView {
   id: string;
   role: "user" | "assistant" | "tool" | "system";
   text: string;
+  /** 助手消息的思考内容（ThinkingContent 合并文本） */
+  thinking?: string;
   toolName?: string;
   timestamp: number;
   toolCallId?: string;

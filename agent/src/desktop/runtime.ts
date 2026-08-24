@@ -8,7 +8,7 @@ import path from "node:path";
 import type { ThinkingLevel } from "../ai/types.ts";
 import { runAgentLoop } from "../agent/loop.ts";
 import type { AgentEvent, AgentMessage } from "../agent/types.ts";
-import { textFrom } from "../agent/types.ts";
+import { thinkingFrom, textFrom } from "../agent/types.ts";
 import { getAgentDir, getSessionsDir } from "../config.ts";
 import { createEventBus } from "../extensions/event-bus.ts";
 import { createExtensionRuntime, loadExtensions } from "../extensions/loader.ts";
@@ -100,11 +100,14 @@ export type DesktopRuntimeEvent =
   | { type: "agent_start"; sessionId: string }
   | { type: "agent_end"; sessionId: string; usage?: SessionUsageTotals }
   | { type: "text_delta"; sessionId: string; text: string }
+  | { type: "thinking_delta"; sessionId: string; text: string }
   | {
       type: "message_end";
       sessionId: string;
       role: string;
       text: string;
+      /** 助手消息的思考内容（ThinkingContent 合并文本） */
+      thinking?: string;
       usage?: Usage;
       /** 用户消息携带的图片附件（base64 + MIME），供 UI 渲染 */
       images?: PromptImage[];
@@ -150,6 +153,8 @@ export interface TimelineItem {
   id: string;
   role: "user" | "assistant" | "tool" | "system" | "custom";
   text: string;
+  /** 助手消息的思考内容（ThinkingContent 合并文本） */
+  thinking?: string;
   /** 用户消息携带的图片附件（base64 + MIME） */
   images?: PromptImage[];
   toolName?: string;
@@ -326,6 +331,9 @@ function projectEvent(sessionId: string, event: AgentEvent): DesktopRuntimeEvent
       if (delta.type === "text" && delta.delta) {
         return { type: "text_delta", sessionId, text: delta.delta };
       }
+      if (delta.type === "thinking" && delta.delta) {
+        return { type: "thinking_delta", sessionId, text: delta.delta };
+      }
       return undefined;
     }
     case "message_end": {
@@ -337,6 +345,7 @@ function projectEvent(sessionId: string, event: AgentEvent): DesktopRuntimeEvent
           sessionId,
           role: event.message.role,
           text: textFrom(event.message),
+          thinking: event.message.role === "assistant" ? thinkingFrom(event.message) : undefined,
           images: event.message.role === "user" ? imagesFrom(event.message) : undefined,
           usage,
         };
@@ -425,11 +434,13 @@ function timelineFromHistory(messages: AgentMessage[]): TimelineItem[] {
     }
     if (message.role === "assistant") {
       const text = textFrom(message);
-      if (!text.trim()) return;
+      const thinking = thinkingFrom(message) || undefined;
+      if (!text.trim() && !thinking) return;
       items.push({
         id: `assistant-${index}`,
         role: "assistant",
         text,
+        thinking,
         timestamp: Date.now(),
       });
       return;

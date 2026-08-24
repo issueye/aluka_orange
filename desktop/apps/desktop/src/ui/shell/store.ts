@@ -143,6 +143,8 @@ export interface SessionState {
   activeId?: string;
   timeline: TimelineItem[];
   streaming: string;
+  /** 流式中的思考内容（thinking_delta 累积展示） */
+  thinking: string;
   busy: boolean;
   busyIds: Set<string>;
   usage?: SessionUsageView;
@@ -160,6 +162,7 @@ export const sessionStore = createStore<SessionState>(() => ({
   activeId: undefined,
   timeline: [],
   streaming: "",
+  thinking: "",
   busy: false,
   busyIds: new Set(),
   usage: undefined,
@@ -208,6 +211,8 @@ export function rememberTimeline(cwd: string | undefined, id: string | undefined
 
 /** 正在流式输出的文本（动作/事件共用） */
 export const streamingRef = { current: "" };
+/** 正在流式输出的思考内容（thinking_delta 累积，message_end 并入条目） */
+export const streamingThinkingRef = { current: "" };
 /** 选择文件夹弹窗进行中（防重复触发） */
 export const pickingFolderRef = { current: false };
 /** 侧栏动画定时器句柄 */

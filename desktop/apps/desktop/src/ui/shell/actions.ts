@@ -28,6 +28,7 @@ import {
   shellStore,
   sidebarAnimTimer,
   streamingRef,
+  streamingThinkingRef,
   timelineCache,
   toast,
 } from "./store.ts";
@@ -79,7 +80,8 @@ export async function applyOpened(opened: OpenedSession): Promise<void> {
   sessionStore.set({ sessionLoading: true });
   try {
     const leftover = streamingRef.current.trim();
-    if (leftover) {
+    const leftoverThinking = streamingThinkingRef.current.trim();
+    if (leftover || leftoverThinking) {
       const prevKey = sessionKey(sessionStore.get().sessionRef.cwd, sessionStore.get().sessionRef.id);
       if (prevKey) {
         const prev = timelineCache[prevKey] ?? [];
@@ -91,8 +93,14 @@ export async function applyOpened(opened: OpenedSession): Promise<void> {
               id: `a-${Date.now()}-park`,
               role: "assistant",
               text: leftover,
+              thinking: leftoverThinking || undefined,
               timestamp: Date.now(),
             },
+          ];
+        } else if (leftoverThinking && !last.thinking) {
+          timelineCache[prevKey] = [
+            ...prev.slice(0, -1),
+            { ...last, thinking: leftoverThinking },
           ];
         }
       }
@@ -109,7 +117,8 @@ export async function applyOpened(opened: OpenedSession): Promise<void> {
     );
     rememberTimeline(opened.cwd, opened.id, next);
     streamingRef.current = "";
-    sessionStore.set({ streaming: "" });
+    streamingThinkingRef.current = "";
+    sessionStore.set({ streaming: "", thinking: "" });
     shellStore.set({ view: "chat" });
     shellStore.set((prev) => ({ settings: { ...prev.settings, cwd: opened.cwd } }));
     // 长会话时间线渲染量大：放进 transition，让侧栏高亮等紧急更新先上屏

@@ -16,6 +16,7 @@ import type {
   LlmMessage,
   Model,
   TextContent,
+  ThinkingContent,
   ThinkingLevel,
   ToolExecutionMode,
   ToolResultMessage,
@@ -250,6 +251,18 @@ export function textFrom(message: AgentMessage): string {
   return parts
     .filter((part): part is TextContent => part.type === "text")
     .map((part) => part.text)
+    .join("");
+}
+
+/**
+ * 从消息中提取思考内容（模型的内部推理过程，ThinkingContent 块）
+ * 无思考块时返回空串；多个思考块按顺序拼接。
+ */
+export function thinkingFrom(message: AgentMessage): string {
+  if (message.role !== "assistant") return "";
+  return message.content
+    .filter((part): part is ThinkingContent => part.type === "thinking")
+    .map((part) => part.thinking)
     .join("");
 }
 

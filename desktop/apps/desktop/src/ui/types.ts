@@ -17,6 +17,8 @@ export type TimelineItem = {
   /** 消息角色：用户/助手/工具/系统/自定义（扩展 appendEntry） */
   role: "user" | "assistant" | "tool" | "system" | "custom";
   text: string;
+  /** 助手消息的思考内容（ThinkingContent 合并文本） */
+  thinking?: string;
   /** 用户消息携带的图片附件 */
   images?: TimelineImage[];
   /** 工具调用时的工具名（仅 tool 类型） */

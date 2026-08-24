@@ -72,6 +72,8 @@ export function ChatView(props: {
   hidden: boolean;
   timeline: TimelineItem[];
   streaming: string;
+  /** 流式中的思考内容（思考深度开启时显示） */
+  thinking: string;
   busy: boolean;
   /** 会话打开中（切换会话时时间线加载占位） */
   sessionLoading: boolean;
@@ -291,7 +293,15 @@ export function ChatView(props: {
             <div key={item.id} className={`bubble ${item.role === "system" ? "error" : item.role}`}>
               <div className="role">{roleLabel(item.role, item.toolName)}</div>
               {item.role === "assistant" ? (
-                <Markdown>{item.text}</Markdown>
+                <>
+                  {item.thinking ? (
+                    <details className="bubble-thinking" open={false}>
+                      <summary>思考过程</summary>
+                      <div className="bubble-thinking__body">{item.thinking}</div>
+                    </details>
+                  ) : null}
+                  {item.text ? <Markdown>{item.text}</Markdown> : null}
+                </>
               ) : (
                 <div className="bubble-text">{item.text}</div>
               )}
@@ -301,6 +311,12 @@ export function ChatView(props: {
         {props.streaming ? (
           <div className="bubble assistant">
             <div className="role">助手</div>
+            {props.thinking ? (
+              <details className="bubble-thinking" open={false}>
+                <summary>思考过程</summary>
+                <div className="bubble-thinking__body">{props.thinking}</div>
+              </details>
+            ) : null}
             <Markdown>{props.streaming}</Markdown>
           </div>
         ) : null}

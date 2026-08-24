@@ -202,6 +202,7 @@ export function ShellMain() {
   const uiContributions = useShell((s) => s.uiContributions);
   const timeline = useSession((s) => s.timeline);
   const streaming = useSession((s) => s.streaming);
+  const thinking = useSession((s) => s.thinking);
   const busy = useSession((s) => s.busy);
   const sessionLoading = useSession((s) => s.sessionLoading);
   const prompt = useSession((s) => s.prompt);
@@ -242,6 +243,7 @@ export function ShellMain() {
         hidden={view !== "chat"}
         timeline={timeline}
         streaming={streaming}
+        thinking={thinking}
         busy={busy}
         sessionLoading={sessionLoading}
         prompt={prompt}
