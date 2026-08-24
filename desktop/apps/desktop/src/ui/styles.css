@@ -95,8 +95,141 @@
   --shadow-soft: 0 16px 48px rgb(0 0 0 / 0.12);
 }
 
+/* —— 自定义滚动条（替代原生；结构统一，颜色 token 随主题） —— */
+
+:root,
+[data-theme="dark"] {
+  --scrollbar-size: 10px;
+  --scrollbar-thumb: color-mix(in srgb, #ffffff 18%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, #ffffff 30%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, #ffffff 42%, transparent);
+}
+
+[data-theme="light"] {
+  --scrollbar-thumb: color-mix(in srgb, #171717 16%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, #171717 28%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, #171717 42%, transparent);
+}
+
+/* Firefox / 新版 Chromium 底稿；WebKit 伪元素在其上细化 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 主要滚动容器：gutter 稳定，滚动条出现/消失不引起内容宽度跳动；
+   hover 容器时滑杆提亮（默认低可见度，弱化原生观感） */
+.ws-tree,
+.session-list,
+.timeline,
+.prov-rail-scroll,
+.prov-main,
+.settings-nav-scroll,
+.models-preview,
+.ui-select__menu,
+.ui-dialog__body,
+.ui-lightbox__stage {
+  scrollbar-gutter: stable;
+}
+.ws-tree:hover::-webkit-scrollbar-thumb,
+.session-list:hover::-webkit-scrollbar-thumb,
+.timeline:hover::-webkit-scrollbar-thumb,
+.prov-rail-scroll:hover::-webkit-scrollbar-thumb,
+.prov-main:hover::-webkit-scrollbar-thumb,
+.settings-nav-scroll:hover::-webkit-scrollbar-thumb,
+.models-preview:hover::-webkit-scrollbar-thumb,
+.ui-select__menu:hover::-webkit-scrollbar-thumb,
+.ui-dialog__body:hover::-webkit-scrollbar-thumb,
+.ui-lightbox__stage:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+/* —— 全局阴影层级：面板/卡片统一浮起（token 双主题） —— */
+
+:root,
+[data-theme="dark"] {
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.3);
+}
+
+[data-theme="light"] {
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 32px rgb(0 0 0 / 0.1);
+}
+
+/* 侧栏：右侧投影与主区形成层次（暗色下几乎不可见，靠边框分隔） */
+.sidebar {
+  box-shadow: 6px 0 24px rgb(0 0 0 / 0.08);
+}
+
+/* 设置卡：统一浮起 */
+.settings-card {
+  box-shadow: var(--shadow-panel);
+}
+
+/* —— 助手消息思考块（可折叠；默认收起，点击展开） —— */
+
+.bubble-thinking {
+  margin: 0 0 8px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.bubble-thinking summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--group-label-color);
+  font-weight: 500;
+  outline: none;
+}
+
+.bubble-thinking summary:hover {
+  color: var(--muted-foreground);
+}
+
+.bubble-thinking__body {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
+
 * {
   box-sizing: border-box;
+}
+
+html {
+  border: 1px solid var(--user-bubble-border);
+  border-radius: 4px;
 }
 
 html,
@@ -3332,7 +3465,11 @@ select {
   justify-content: center;
   gap: 10px;
   background:
-    radial-gradient(90% 120% at 50% 0%, color-mix(in srgb, #ff8a2a 13%, transparent) 0%, transparent 60%),
+    radial-gradient(
+      90% 120% at 50% 0%,
+      color-mix(in srgb, #ff8a2a 13%, transparent) 0%,
+      transparent 60%
+    ),
     var(--background);
   color: var(--foreground);
   transition:
@@ -3351,13 +3488,20 @@ select {
 }
 
 .splash-logo {
-  animation: splash-breathe 2.2s ease-in-out infinite, splash-enter 0.5s var(--ease-out);
+  animation:
+    splash-breathe 2.2s ease-in-out infinite,
+    splash-enter 0.5s var(--ease-out);
   filter: drop-shadow(0 8px 24px rgb(232 89 12 / 0.28));
 }
 
 @keyframes splash-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.07); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
 }
 
 @keyframes splash-enter {
@@ -3405,8 +3549,12 @@ select {
 }
 
 @keyframes splash-progress {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(360%); }
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
 }
 
 .splash-status {
