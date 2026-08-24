@@ -67,7 +67,8 @@ if (path.normalize(desktopCopy) !== path.normalize(outfile)) {
   console.log(`[build-gui] copied ${desktopCopy}`);
 }
 
-// —— 嵌入式 SSR 内核：拷贝到 exe 旁（编译版运行时探测同目录） ——
+// —— 嵌入式 SSR 内核（可选回退）：拷贝到 exe 旁（编译版运行时探测同目录）。
+// 主流程已改为常量动态 import 直接编入 payload，本文件仅服务旧运行时回退。
 const ssrBundle = path.resolve(appRoot, "src/main/ssr-out/ssr-embedded.mjs");
 if (fs.existsSync(ssrBundle)) {
   for (const dir of [path.dirname(outfile), path.dirname(desktopCopy)]) {
@@ -75,5 +76,5 @@ if (fs.existsSync(ssrBundle)) {
   }
   console.log(`[build-gui] copied ssr-embedded.mjs alongside exe`);
 } else {
-  console.warn(`[build-gui] WARNING: ssr-embedded.mjs not found (${ssrBundle}); run "node scripts/ssr-build.mjs" first`);
+  console.log(`[build-gui] ssr-embedded.mjs not found (optional legacy fallback); core loads from module graph`);
 }

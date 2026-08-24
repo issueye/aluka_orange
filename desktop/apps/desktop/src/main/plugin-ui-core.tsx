@@ -2,14 +2,17 @@
  * 组件档渲染核心（双载体运行时共用）
  *
  * - Node 子进程版（scripts/ssr-server.mjs）：经 jiti 加载本文件（alias 提供 react/@aluka/ui）；
- * - 嵌入版（esbuild 打包为 ESM 单文件，编入 exe）：aluka 主进程 import 本文件
- *   （react/react-dom 编进 bundle；插件组件由 importer 经 aluka 原生编译加载）。
+ * - 嵌入版：aluka 主进程常量动态 import 本文件（dev 走运行时 TSX 加载、打包版编入
+ *   payload；ssr-embedded.mjs 预构建产物仅作旧运行时回退）。插件组件由 importer
+ *   经 aluka 原生编译加载。
  *
  * 本文件不含 Node/HTTP 依赖：实例缓存 + 渲染 + action + 卸载；
  * 组件导入器由 initCore 注入（jiti 或 aluka 原生 import）。
  */
 import { createElement } from "react";
-import { renderToString } from "react-dom/server";
+// 浏览器变体引用 stream/crypto 等 Node 内置，aluka 运行时（单文件 exe）无法解析 node 变体；
+// server.browser 提供同一 renderToString API，Node 子进程（ssr-server.mjs）下同样可用。
+import { renderToString } from "react-dom/server.browser";
 import type {
   PluginComponent,
   PluginComponentContext,

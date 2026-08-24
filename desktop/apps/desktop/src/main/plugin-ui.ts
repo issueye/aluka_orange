@@ -3,9 +3,10 @@
  *
  * - node 桥（默认）：Node 子进程内 jiti+esbuild+React（零构建、HMR 友好）；
  *   适用于 dev / 源码运行 / 具备 node_modules 的打包环境。
- * - embedded 内核：esbuild 打包的 ESM 单文件（src/main/ssr-embedded.mjs，
- *   react/react-dom 编入）+ 插件组件经 **aluka 原生 import**（虚拟模块提供
- *   react/@aluka/ui）；适用于单文件 exe（无 Node/node_modules）。
+ * - embedded 内核：主进程直接 import 本目录 plugin-ui-core.tsx（常量动态 import，
+ *   dev 走运行时 TSX 加载、打包版编入 payload）；ssr-embedded.mjs（vite 预构建单文件）
+ *   仅作旧运行时回退。插件组件经 **aluka 原生 import**（虚拟模块提供 react/@aluka/ui）；
+ *   适用于单文件 exe（无 Node/node_modules）。
  *   强制切换：ALUKA_SSR=embedded；Node 桥启动失败时自动回退 embedded。
  *
  * 主进程侧统一保持「RPC 发起（return started）+ emitToUi 事件回传」接口。
@@ -127,7 +128,16 @@ let embeddedPromise: Promise<typeof import("./plugin-ui-core.tsx")> | undefined;
 function startEmbedded(): Promise<typeof import("./plugin-ui-core.tsx")> {
   if (!embeddedPromise) {
     embeddedPromise = (async () => {
-      const core = (await import(pathToFileURL(embeddedPath).href)) as typeof import("./plugin-ui-core.tsx");
+      // 优先常量说明符动态 import：编译期即入依赖图（dev 从磁盘加载 TSX，打包版从 payload 加载），
+      // 不再依赖 ssr-embedded.mjs 预构建产物；仅旧运行时加载失败时回退磁盘内核文件。
+      let core: typeof import("./plugin-ui-core.tsx");
+      try {
+        core = await import("./plugin-ui-core.tsx");
+        console.log("[plugin-ui] core loaded from module graph");
+      } catch (error) {
+        console.warn("[plugin-ui] module graph import failed, fallback to ssr-embedded.mjs", error);
+        core = (await import(pathToFileURL(embeddedPath).href)) as typeof import("./plugin-ui-core.tsx");
+      }
       // 虚拟模块：插件组件经 aluka 原生 import 时的裸说明符解析到宿主单例
       registerVirtualModule("react", (core as { reactEnvironment?: unknown }).reactEnvironment);
       registerVirtualModule("@aluka/ui", {
