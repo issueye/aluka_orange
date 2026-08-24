@@ -43,19 +43,25 @@ type MenuStyle = {
   top?: number;
   bottom?: number;
   left: number;
-  width: number;
+  minWidth: number;
+  maxWidth: number;
   maxHeight: number;
   placement: "bottom" | "top";
 };
 
+/** 菜单宽度上限：内容可撑开菜单，但不超过该值（同时受视口约束） */
+const MENU_MAX_WIDTH = 420;
+
 /**
  * 计算下拉菜单的定位样式
  * 根据触发器位置自动决定向上或向下展开，并限制最大高度。
+ * 宽度策略：至少与触发器对齐，长文本按内容撑开（CSS max-content），上限 MENU_MAX_WIDTH。
  */
 function buildMenuStyle(
   trigger: HTMLElement,
   maxMenuHeight: number,
   measuredHeight?: number,
+  measuredWidth?: number,
 ): MenuStyle {
   const rect = trigger.getBoundingClientRect();
   const gap = 6;
@@ -66,10 +72,14 @@ function buildMenuStyle(
   const available = preferBottom ? spaceBelow : spaceAbove;
   const maxHeight = Math.max(72, Math.min(maxMenuHeight, available - gap));
 
-  let width = Math.max(rect.width, 160);
+  const minWidth = rect.width;
+  const maxWidth = Math.max(minWidth, Math.min(MENU_MAX_WIDTH, window.innerWidth - pad * 2));
+
   let left = rect.left;
-  if (left + width > window.innerWidth - pad) {
-    left = Math.max(pad, window.innerWidth - width - pad);
+  // 菜单按内容撑开后，把右缘收进视口；未量到宽度时先按上限兜底
+  const assumedWidth = measuredWidth && measuredWidth > 0 ? measuredWidth : maxWidth;
+  if (left + assumedWidth > window.innerWidth - pad) {
+    left = Math.max(pad, window.innerWidth - assumedWidth - pad);
   }
   if (left < pad) left = pad;
 
@@ -77,7 +87,8 @@ function buildMenuStyle(
     return {
       top: rect.bottom + gap,
       left,
-      width,
+      minWidth,
+      maxWidth,
       maxHeight,
       placement: "bottom",
     };
@@ -87,7 +98,8 @@ function buildMenuStyle(
   const style: MenuStyle = {
     bottom: window.innerHeight - rect.top + gap,
     left,
-    width,
+    minWidth,
+    maxWidth,
     maxHeight,
     placement: "top",
   };
@@ -98,7 +110,8 @@ function buildMenuStyle(
       return {
         top,
         left,
-        width,
+        minWidth,
+        maxWidth,
         maxHeight,
         placement: "top",
       };
@@ -145,7 +158,8 @@ export function Select({
     const update = () => {
       if (!triggerRef.current) return;
       const measured = menuRef.current?.offsetHeight;
-      setMenuStyle(buildMenuStyle(triggerRef.current, maxMenuHeight, measured));
+      const measuredWidth = menuRef.current?.offsetWidth;
+      setMenuStyle(buildMenuStyle(triggerRef.current, maxMenuHeight, measured, measuredWidth));
     };
 
     update();
@@ -196,7 +210,8 @@ export function Select({
               top: menuStyle.top,
               bottom: menuStyle.bottom,
               left: menuStyle.left,
-              width: menuStyle.width,
+              minWidth: menuStyle.minWidth,
+              maxWidth: menuStyle.maxWidth,
               maxHeight: menuStyle.maxHeight,
             }}
           >
@@ -211,13 +226,14 @@ export function Select({
                       type="button"
                       className={["ui-select__option", active ? "is-active" : ""].filter(Boolean).join(" ")}
                       disabled={opt.disabled}
+                      title={opt.label}
                       onClick={() => {
                         if (opt.disabled) return;
                         onChange(opt.value);
                         setOpen(false);
                       }}
                     >
-                      <span>{opt.label}</span>
+                      <span className="ui-select__option-label">{opt.label}</span>
                       {active ? <Check size={14} /> : null}
                     </button>
                   </li>

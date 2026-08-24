@@ -335,6 +335,9 @@ h3.ui-section-head__title {
   margin: 0;
   /* 避免同时写 top/bottom 时被意外拉伸 */
   height: auto;
+  /* 宽度随最长选项撑开（内联 minWidth/maxWidth 兜底与封顶），只保留纵向滚动 */
+  width: max-content;
+  overflow-x: hidden;
 }
 
 .ui-select__empty {
@@ -359,6 +362,14 @@ h3.ui-section-head__title {
   font: inherit;
   font-size: 13px;
   transition: background var(--duration-fast) var(--ease-out);
+}
+
+/* 选项单行展示，超长省略；完整内容靠按钮 title 悬浮提示 */
+.ui-select__option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ui-select__option:hover:not(:disabled) {
@@ -667,14 +678,15 @@ h3.ui-section-head__title {
 
 .ui-dialog__title {
   margin: 0;
-  padding: 16px 18px 0;
+  padding: 16px 18px;
   font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .ui-dialog__body {
-  padding: 12px 18px 16px;
+  padding: 16px 18px;
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.55;
@@ -684,7 +696,7 @@ h3.ui-section-head__title {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 12px 18px 16px;
+  padding: 8px;
   border-top: 1px solid var(--border-subtle);
 }
 

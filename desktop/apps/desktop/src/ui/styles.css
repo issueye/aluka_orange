@@ -1445,6 +1445,7 @@ select {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 /* 输入框内下拉：贴近参考设计的无边框文字触发器 */
@@ -1761,7 +1762,7 @@ select {
 .prov-head-title h2 {
   margin: 0;
   font-size: 20px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
@@ -1779,7 +1780,7 @@ select {
 }
 
 .prov-pill {
-  height: 26px;
+  height: 18px;
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -1857,7 +1858,6 @@ select {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-width: 640px;
 }
 
 .prov-secret {
@@ -1909,7 +1909,6 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 720px;
 }
 
 .prov-model-card {
@@ -2071,6 +2070,7 @@ select {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+  padding: 8px 0;
 }
 
 .model-pick-list {
@@ -2407,8 +2407,8 @@ select {
 
 .settings-row-copy {
   width: 100%;
-  min-width: 0;
-  flex: 1;
+  min-width: 200px;
+  max-width: 400px;  
 }
 
 .settings-row-title {

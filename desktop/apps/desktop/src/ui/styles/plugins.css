@@ -190,7 +190,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex: 1;
 }
 .env-row-control .env-value-input {
   min-width: 200px;
@@ -204,4 +204,7 @@
   padding: 0 10px;
   height: 26px;
   font-size: 11px;
+}
+.env-row-control .ui-btn--add {
+  white-space: nowrap;
 }
