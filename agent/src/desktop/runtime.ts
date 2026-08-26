@@ -1346,13 +1346,17 @@ export async function createDesktopRuntime(opts: CreateDesktopRuntimeOptions = {
           }),
         });
       } catch (error) {
-        releaseBusy();
-        const message = error instanceof Error ? error.message : String(error);
+        const isAbort = (error as Error)?.name === "AbortError" || (error as Error)?.message?.includes("Aborted");
+        const message = isAbort ? "已中止" : error instanceof Error ? error.message : String(error);
         try {
           await emitDesktop({ type: "error", sessionId, message });
         } catch {
           /* 上报失败不能重新锁住 Agent */
         }
+        // 保证 agent_end 已通过 runAgentLoop 的 finally 发出；若未发出则补发
+        try {
+          await emitDesktop({ type: "agent_end", sessionId });
+        } catch {}
         throw error;
       } finally {
         releaseBusy();

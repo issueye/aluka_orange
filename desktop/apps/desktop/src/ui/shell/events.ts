@@ -246,6 +246,7 @@ function onRuntime(raw: unknown): void {
     return;
   }
   if (event.type === "error" && event.message) {
+    if (sid) markBusy(sid, false);
     commitTimeline((prev) => [
       ...prev,
       {
@@ -255,7 +256,7 @@ function onRuntime(raw: unknown): void {
         timestamp: Date.now(),
       },
     ]);
-    sessionStore.set({ busy: false });
+    if (isActiveEvent) sessionStore.set({ busy: false });
   }
 }
 

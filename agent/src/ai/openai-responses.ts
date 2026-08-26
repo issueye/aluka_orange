@@ -269,6 +269,7 @@ async function run(
     applyCompletedOutput(completedOutput, content, toolBuffers, stream);
   } else {
     for await (const frame of readSseEvents(response.body, options.signal)) {
+      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       if (frame.data === "[DONE]") break;
       let event: ResponsesEvent;
       try {
@@ -289,8 +290,10 @@ async function run(
         if (event.response?.output) completedOutput = event.response.output;
         continue;
       }
+      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       applyStreamEvent(type, event, content, toolBuffers, stream);
     }
+    if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (content.length === 0 && toolBuffers.size === 0 && completedOutput?.length) {
       applyCompletedOutput(completedOutput, content, toolBuffers, stream);
     } else if (completedOutput?.length) {

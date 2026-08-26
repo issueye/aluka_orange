@@ -74,7 +74,8 @@ async function loop(
 ): Promise<void> {
   let turnIndex = 0;
 
-  while (!signal?.aborted) {
+  while (true) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     // 可选：让扩展变换消息上下文（如注入系统信息）
     const messages = config.transformContext
       ? await config.transformContext(context.messages)
@@ -102,9 +103,10 @@ async function loop(
       onResponse: config.afterProviderResponse,
     });
 
-    // 收集流式响应
+    // 收集流式响应（abort 时立即中断）
     let assistant: AssistantMessage | undefined;
     for await (const event of stream) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       if (event.type === "start") {
         // 开始新的助手消息
         assistant = { role: "assistant", content: [], model: config.model.id };
@@ -131,6 +133,7 @@ async function loop(
         });
       }
     }
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     if (!assistant) throw new Error("Provider returned no assistant message");
 
@@ -147,9 +150,10 @@ async function loop(
       return;
     }
 
-    // 逐个执行工具调用
+    // 逐个执行工具调用（abort 时立即中断并抛出）
     const toolResults: ToolResultMessage[] = [];
     for (const call of calls) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       const tool = context.tools.find((item) => item.name === call.name);
       await emit({
         type: "tool_execution_start",
@@ -181,6 +185,7 @@ async function loop(
               partialResult: partial,
             });
           });
+          if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
           result = {
             role: "toolResult",
             toolCallId: call.id,
@@ -190,6 +195,7 @@ async function loop(
             isError: executed.isError,
           };
         } catch (error) {
+          if ((error as Error)?.name === "AbortError" || signal?.aborted) throw error;
           // 工具执行异常：返回错误结果
           result = {
             role: "toolResult",
@@ -211,8 +217,10 @@ async function loop(
         result,
         isError: Boolean(result.isError),
       });
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     }
 
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     // 本轮结束，进入下一轮
     await emit({ type: "turn_end", turnIndex, message: assistant, toolResults });
     turnIndex += 1;

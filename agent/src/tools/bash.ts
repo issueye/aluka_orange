@@ -24,10 +24,12 @@ export const bashTool = defineTool({
     timeout: Type.Optional(Type.Number({ description: "Timeout in milliseconds" })),
   }),
   async execute(_id, params, signal, onUpdate, ctx) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const timeout = params.timeout ?? 60_000;
     const result = await runShell(params.command, ctx.cwd, timeout, signal, (chunk) => {
       onUpdate?.({ content: [{ type: "text", text: chunk }] });
     });
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     // 合并 stdout 和 stderr，截断到 100KB
     const text = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || `(exit ${result.code})`;
     return {

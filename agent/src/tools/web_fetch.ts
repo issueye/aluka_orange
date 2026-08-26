@@ -143,8 +143,10 @@ export const webFetchTool = defineTool({
         details: { url: finalUrl, status, contentType, length: output.length, truncated },
       };
     } catch (error) {
-      if ((error as Error)?.name === "AbortError") {
-        const reason = signal?.aborted ? "aborted" : `timeout after ${timeoutMs}ms`;
+      if ((error as Error)?.name === "AbortError" || signal?.aborted) {
+        // 区分超时 vs 用户中止：超时返回普通错误，中止则抛出以终止会话
+        if (signal?.aborted) throw error;
+        const reason = `timeout after ${timeoutMs}ms`;
         return { content: [{ type: "text", text: `web_fetch ${reason}: ${rawUrl}` }], isError: true };
       }
       const message = error instanceof Error ? error.message : String(error);

@@ -176,6 +176,7 @@ async function run(
 
   // 解析 SSE 数据流（signal 中止时读取立即结束，停止对话无需等下一个 chunk）
   for await (const line of readSse(response.body, options.signal)) {
+    if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (line === "[DONE]") break;
     let chunk: OpenAIChunk;
     try {
@@ -199,6 +200,8 @@ async function run(
     // 更新停止原因
     if (choice.finish_reason === "tool_calls") stopReason = "toolUse";
     if (choice.finish_reason === "length") stopReason = "length";
+
+    if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     const delta = choice.delta;
 
@@ -231,6 +234,8 @@ async function run(
       }
     }
   }
+
+  if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
   // 完成所有工具调用的解析
   for (const buffer of toolBuffers.values()) {
