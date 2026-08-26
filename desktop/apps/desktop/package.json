@@ -21,7 +21,9 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
+    "@types/prismjs": "^1.26.6",
     "lucide-react": "^1.32.0",
+    "prismjs": "^1.30.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

@@ -12,6 +12,9 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { CodeBlock } from "./components/CodeBlock.tsx";
+import { DiffView } from "./components/DiffView.tsx";
+import { diffLines, toUnifiedText } from "./lib/diff.ts";
 
 export type ToolStatus = "running" | "done" | "error";
 
@@ -118,45 +121,57 @@ function summarizeArgs(args?: Record<string, unknown>): string {
   return typeof first === "string" ? first : "";
 }
 
-function CodeView(props: { lines: string[]; start?: number }) {
-  const start = props.start ?? 1;
-  return (
-    <table className="code-view">
-      <tbody>
-        {props.lines.map((line, index) => (
-          <tr key={index}>
-            <td className="code-view__gutter">{start + index}</td>
-            <td className="code-view__src">{line.length ? line : " "}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 export function ToolCard({ item }: { item: ToolCardItem }) {
   const status: ToolStatus = item.toolStatus ?? (item.isError ? "error" : item.resultText || item.text ? "done" : "running");
   const args = asRecord(item.args);
   const output = unwrapOutput(item.resultText ?? item.text ?? "");
   const path = typeof args?.path === "string" ? args.path : undefined;
   const numbered = useMemo(() => parseNumberedOutput(output), [output]);
+
+  // 代码类参数改用专门视图：write 的 content 走代码块，edit 的 oldText/newText 走 diff
+  const writeContent = item.toolName === "write" && typeof args?.content === "string"
+    ? (args.content as string)
+    : undefined;
+  const isEditPair = item.toolName === "edit"
+    && typeof args?.oldText === "string"
+    && typeof args?.newText === "string";
+  const oldText = isEditPair ? (args?.oldText as string) : undefined;
+  const newText = isEditPair ? (args?.newText as string) : undefined;
+  const diffRows = useMemo(
+    () => (isEditPair ? diffLines(oldText as string, newText as string) : undefined),
+    [isEditPair, oldText, newText],
+  );
+
   const [copied, setCopied] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const open = userOpen;
   const name = fileName(path);
   const summary = summarizeArgs(args) || name || "";
-  const lineCount = numbered?.lines.length ?? (output ? output.split("\n").length : 0);
-  const argEntries = Object.entries(args ?? {}).filter(([, value]) => value !== undefined && value !== "");
+  const lineCount = numbered?.lines.length
+    ?? (writeContent !== undefined ? writeContent.split("\n").length : output ? output.split("\n").length : 0);
+  const hiddenArgKeys = new Set([
+    ...(writeContent !== undefined ? ["content"] : []),
+    ...(diffRows ? ["oldText", "newText"] : []),
+  ]);
+  const argEntries = Object.entries(args ?? {}).filter(
+    ([key, value]) => value !== undefined && value !== "" && !hiddenArgKeys.has(key),
+  );
+  const diffAdds = diffRows?.filter((row) => row.type === "add").length ?? 0;
+  const diffDels = diffRows?.filter((row) => row.type === "del").length ?? 0;
   const statusLabel = status === "running" ? "执行中" : status === "error" ? "失败" : "完成";
-  const meta = [
+  const metaParts = [
     languageHint(path),
-    lineCount > 0 && status !== "running" ? `${lineCount} 行` : "",
-  ].filter(Boolean).join(" · ");
+    diffRows ? `+${diffAdds} −${diffDels}` : lineCount > 0 && status !== "running" ? `${lineCount} 行` : "",
+  ];
+  const meta = metaParts.filter(Boolean).join(" · ");
 
   async function copy(event: { stopPropagation(): void }) {
     event.stopPropagation();
+    const payload = diffRows
+      ? toUnifiedText(diffRows)
+      : writeContent ?? (numbered ? numbered.lines.join("\n") : output);
     try {
-      await navigator.clipboard.writeText(numbered ? numbered.lines.join("\n") : output);
+      await navigator.clipboard.writeText(payload);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
@@ -176,7 +191,7 @@ export function ToolCard({ item }: { item: ToolCardItem }) {
           {status === "running" ? <LoaderCircle size={12} className="tool-card__spin" /> : status === "error" ? <X size={11} /> : <Check size={11} />}
           {statusLabel}
         </span>
-        {output && status !== "running" ? (
+        {(output || writeContent || diffRows) && status !== "running" ? (
           <span
             className="tool-card__copy"
             role="button"
@@ -210,20 +225,34 @@ export function ToolCard({ item }: { item: ToolCardItem }) {
             <pre className="tool-card__args-fallback">{formatArgValue(item.args)}</pre>
           ) : null}
 
-          {status === "running" && !output ? (
+          {status === "running" && !output && writeContent === undefined && !diffRows ? (
             <div className="tool-card__pending">正在执行…</div>
           ) : null}
 
-          {output ? (
-            <div className={`tool-card__out${item.isError ? " tool-card__out--error" : ""}`}>
-              {numbered ? (
-                <CodeView lines={numbered.lines} start={numbered.start} />
-              ) : (
-                <pre className={item.toolName === "bash" ? "tool-card__terminal" : "tool-card__plain"}>{output}</pre>
-              )}
-              {numbered?.notice ? <div className="tool-card__notice">{numbered.notice}</div> : null}
+          {/* 出错时优先展示错误输出；edit 出错仍附带意图变更的 diff 预览 */}
+          {item.isError && output ? (
+            <div className="tool-card__out tool-card__out--error">
+              <pre className="tool-card__plain">{output}</pre>
             </div>
           ) : null}
+
+          {numbered ? (
+            <CodeBlock
+              code={numbered.lines.join("\n")}
+              language={path}
+              startLine={numbered.start}
+              lineNumbers
+            />
+          ) : writeContent !== undefined ? (
+            <CodeBlock code={writeContent} language={path} lineNumbers />
+          ) : oldText !== undefined && newText !== undefined ? (
+            <DiffView oldText={oldText} newText={newText} language={path} />
+          ) : output && !item.isError ? (
+            <div className="tool-card__out">
+              <pre className={item.toolName === "bash" ? "tool-card__terminal" : "tool-card__plain"}>{output}</pre>
+            </div>
+          ) : null}
+          {numbered?.notice ? <div className="tool-card__notice">{numbered.notice}</div> : null}
         </div>
       ) : null}
     </div>

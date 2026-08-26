@@ -553,6 +553,11 @@ h3.ui-section-head__title {
   border: 1px solid var(--border-subtle);
 }
 
+/* 围栏代码块经 CodeBlock 渲染（高亮 + 语言条 + 复制），此处只控制文流间距 */
+.ui-markdown__code {
+  margin: 0.65em 0;
+}
+
 .ui-markdown__pre {
   margin: 0.65em 0;
   padding: 10px 12px;

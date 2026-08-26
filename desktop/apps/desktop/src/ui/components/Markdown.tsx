@@ -1,7 +1,8 @@
-import { memo, useState } from "react";
+import { isValidElement, memo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
+import { CodeBlock } from "./CodeBlock.tsx";
 import { ImageViewer } from "./ImageViewer.tsx";
 import { Spinner } from "./Spinner.tsx";
 
@@ -42,6 +43,27 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
   );
 }
 
+/** 递归提取元素树中的纯文本（代码块内容为纯字符串节点） */
+function flattenText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(flattenText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return flattenText(node.props.children);
+  return "";
+}
+
+/** 围栏代码块（pre>code）：提取语言与文本，交给 CodeBlock 高亮展示 */
+function MarkdownPre({ children }: { children?: ReactNode }) {
+  const codeElement = Array.isArray(children) ? children[0] : children;
+  if (isValidElement<{ className?: string; children?: ReactNode }>(codeElement)) {
+    const { className, children: codeChildren } = codeElement.props;
+    const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
+    const text = flattenText(codeChildren).replace(/\n$/, "");
+    if (text) return <CodeBlock code={text} language={language} showHeader className="ui-markdown__code" />;
+  }
+  return <pre className="ui-markdown__pre">{children}</pre>;
+}
+
 const components: Components = {
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer noopener">
@@ -64,7 +86,7 @@ const components: Components = {
       </code>
     );
   },
-  pre: ({ children }) => <pre className="ui-markdown__pre">{children}</pre>,
+  pre: ({ children }) => <MarkdownPre>{children}</MarkdownPre>,
 };
 
 /**

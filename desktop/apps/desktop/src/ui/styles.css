@@ -95,6 +95,149 @@
   --shadow-soft: 0 16px 48px rgb(0 0 0 / 0.12);
 }
 
+/* —— 代码高亮 token 配色（.hl 作用域；dark 取 One Dark，light 取 GitHub Light） —— */
+
+:root,
+[data-theme="dark"] {
+  --tok-comment: #7d8590;
+  --tok-string: #98c379;
+  --tok-keyword: #c678dd;
+  --tok-number: #d19a66;
+  --tok-literal: #d19a66;
+  --tok-function: #61afef;
+  --tok-class: #e5c07b;
+  --tok-builtin: #56b6c2;
+  --tok-operator: #56b6c2;
+  --tok-punctuation: #abb2bf;
+  --tok-property: #e06c75;
+  --tok-tag: #e06c75;
+  --tok-attr-name: #d19a66;
+  --tok-attr-value: #98c379;
+  --tok-regex: #98c379;
+  --tok-selector: #d19a66;
+  --tok-atrule: #c678dd;
+  --tok-important: #c678dd;
+  --tok-decorator: #61afef;
+  --tok-symbol: #56b6c2;
+  --tok-variable: #e06c75;
+  --tok-char: #98c379;
+}
+
+[data-theme="light"] {
+  --tok-comment: #6a737d;
+  --tok-string: #032f62;
+  --tok-keyword: #cf222e;
+  --tok-number: #0550ae;
+  --tok-literal: #0550ae;
+  --tok-function: #8250df;
+  --tok-class: #953800;
+  --tok-builtin: #0550ae;
+  --tok-operator: #0550ae;
+  --tok-punctuation: #24292f;
+  --tok-property: #953800;
+  --tok-tag: #116329;
+  --tok-attr-name: #0550ae;
+  --tok-attr-value: #116329;
+  --tok-regex: #0a3069;
+  --tok-selector: #8250df;
+  --tok-atrule: #cf222e;
+  --tok-important: #cf222e;
+  --tok-decorator: #8250df;
+  --tok-symbol: #0550ae;
+  --tok-variable: #953800;
+  --tok-char: #032f62;
+}
+
+/* token 类仅作用于 .hl（CodeBlock / DiffView 的代码表面） */
+.hl .token.comment,
+.hl .token.prolog,
+.hl .token.doctype,
+.hl .token.cdata {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+
+.hl .token.punctuation {
+  color: var(--tok-punctuation);
+}
+
+.hl .token.keyword,
+.hl .token.atrule,
+.hl .token.important {
+  color: var(--tok-keyword);
+}
+
+.hl .token.string,
+.hl .token.char,
+.hl .token.attr-value,
+.hl .token.regex,
+.hl .token.url {
+  color: var(--tok-string);
+}
+
+.hl .token.number,
+.hl .token.boolean,
+.hl .token.constant,
+.hl .token.symbol {
+  color: var(--tok-literal);
+}
+
+.hl .token.function {
+  color: var(--tok-function);
+}
+
+.hl .token.class-name,
+.hl .token.maybe-class-name {
+  color: var(--tok-class);
+}
+
+.hl .token.builtin {
+  color: var(--tok-builtin);
+}
+
+.hl .token.operator {
+  color: var(--tok-operator);
+}
+
+.hl .token.property,
+.hl .token.variable {
+  color: var(--tok-property);
+}
+
+.hl .token.tag {
+  color: var(--tok-tag);
+}
+
+.hl .token.attr-name,
+.hl .token.selector {
+  color: var(--tok-attr-name);
+}
+
+.hl .token.decorator,
+.hl .token.annotation {
+  color: var(--tok-decorator);
+}
+
+.hl .token.inserted {
+  color: var(--success);
+}
+
+.hl .token.deleted {
+  color: var(--danger);
+}
+
+.hl .token.bold {
+  font-weight: 600;
+}
+
+.hl .token.italic {
+  font-style: italic;
+}
+
+.hl .token.namespace {
+  opacity: 0.7;
+}
+
 /* —— 自定义滚动条（替代原生；结构统一，颜色 token 随主题） —— */
 
 :root,
@@ -1446,35 +1589,224 @@ select {
   color: var(--danger);
 }
 
-.code-view {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: auto;
+/* —— 代码展示组件（CodeBlock）：语言条 + 行号 + 语法高亮 —— */
+
+.code-block {
+  background: var(--code-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.code-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px 3px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+
+.code-block__lang {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+
+.code-block__copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.code-block__copy:hover {
+  color: var(--foreground);
+  background: var(--hover-fill);
+}
+
+.code-block__copy.is-copied {
+  color: var(--success);
+}
+
+.code-block__body {
+  overflow: auto;
+  padding: 6px 0;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
-.code-view td {
-  vertical-align: top;
-  padding: 0 0 0 0;
+.code-block__row {
+  display: flex;
+  align-items: flex-start;
 }
 
-.code-view__gutter {
-  width: 1%;
-  user-select: none;
+.code-block__ln {
+  flex: 0 0 auto;
+  min-width: 2.5ch;
+  padding: 0 8px 0 12px;
   text-align: right;
-  padding: 1px 8px 1px 10px !important;
   color: var(--muted-foreground);
-  border-right: 1px solid var(--border);
+  user-select: none;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.code-view__src {
-  padding: 1px 10px 1px 8px !important;
+.code-block__src {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 12px;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--foreground);
+  font-family: inherit;
+}
+
+/* 不折行模式：横向滚动，行号吸左不随内容滚走 */
+.code-block--nowrap .code-block__src {
+  white-space: pre;
+  word-break: normal;
+}
+
+.code-block--nowrap .code-block__ln {
+  position: sticky;
+  left: 0;
+  background: var(--code-bg);
+}
+
+/* —— 代码 diff 展示组件（DiffView）：统计条 + 增删行 + 折叠未变更区间 —— */
+
+.diff-view {
+  background: var(--code-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.diff-view__stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.diff-view__stats-add {
+  color: var(--success);
+}
+
+.diff-view__stats-del {
+  color: var(--danger);
+}
+
+.diff-view__stats-lang {
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+
+.diff-view__body {
+  overflow: auto;
+  padding: 4px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-view__row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.diff-view__ln {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--muted-foreground);
+  user-select: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-view__sign {
+  flex: 0 0 auto;
+  width: 2ch;
+  text-align: center;
+  user-select: none;
+}
+
+.diff-view__row--add {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.diff-view__row--add .diff-view__sign {
+  color: var(--success);
+}
+
+.diff-view__row--del {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.diff-view__row--del .diff-view__sign {
+  color: var(--danger);
+}
+
+.diff-view__src {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--foreground);
+  font-family: inherit;
+}
+
+.diff-view__gap {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 3px 0;
+  border: none;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.diff-view__gap:hover {
+  color: var(--foreground);
+  background: var(--hover-fill);
+}
+
+.diff-view__empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* 工具卡内嵌时去掉组件自带边框，贴合卡片表面 */
+.tool-card .code-block,
+.tool-card .diff-view {
+  border: none;
+  border-radius: 0;
 }
 
 .tool-card__terminal,
@@ -3021,11 +3353,13 @@ select {
 }
 
 /* —— Toast / Modal —— */
+/* 层级：select 菜单 10000 < tooltip 10001 < 弹窗 10010 < 灯箱 10020 < Toast ——
+   Toast 必须压过所有浮层，否则弹窗内触发的提示会被遮挡 */
 .toast-stack {
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 40;
+  z-index: 10030;
   display: flex;
   flex-direction: column;
   gap: 8px;

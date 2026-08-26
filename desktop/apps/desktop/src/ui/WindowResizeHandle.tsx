@@ -88,8 +88,11 @@ export function WindowResizeHandle() {
       if (d.raf) return;
       d.raf = window.requestAnimationFrame(() => {
         d.raf = 0;
-        const width = clamp(Math.round(d.width + d.dx), MIN_WINDOW_W, window.screen.availWidth);
-        const height = clamp(Math.round(d.height + d.dy), MIN_WINDOW_H, window.screen.availHeight);
+        // getSize/setSize 均为物理像素；screen.availWidth 是 CSS 像素，需乘 devicePixelRatio 对齐
+        const maxW = Math.round(window.screen.availWidth * window.devicePixelRatio);
+        const maxH = Math.round(window.screen.availHeight * window.devicePixelRatio);
+        const width = clamp(Math.round(d.width + d.dx), MIN_WINDOW_W, maxW);
+        const height = clamp(Math.round(d.height + d.dy), MIN_WINDOW_H, maxH);
         win.setSize!(width, height);
       });
     };

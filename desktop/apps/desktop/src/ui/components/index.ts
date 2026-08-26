@@ -4,6 +4,8 @@ export { Textarea, type TextareaProps } from "./Textarea.tsx";
 export { Select, type SelectProps, type SelectOption } from "./Select.tsx";
 export { Switch, type SwitchProps } from "./Switch.tsx";
 export { Markdown, type MarkdownProps } from "./Markdown.tsx";
+export { CodeBlock, type CodeBlockProps } from "./CodeBlock.tsx";
+export { DiffView, type DiffViewProps } from "./DiffView.tsx";
 export { HintTooltip, type HintTooltipProps } from "./HintTooltip.tsx";
 export { Field, type FieldProps, SectionHead, type SectionHeadProps } from "./Field.tsx";
 export { Dialog, type DialogProps } from "./Dialog.tsx";

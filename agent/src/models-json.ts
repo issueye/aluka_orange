@@ -69,7 +69,8 @@ export interface UpsertCustomProviderInput {
   provider: string;
   baseUrl: string;
   api: Api;
-  modelId: string;
+  /** 可选：创建时同步落一个初始模型；留空则仅保存供应商（之后再补模型） */
+  modelId?: string;
   modelName?: string;
   reasoning?: boolean;
   contextWindow?: number;
@@ -323,9 +324,8 @@ export function upsertCustomProviderInModelsJson(
   input: UpsertCustomProviderInput,
 ): ModelsJsonConfigView {
   const providerId = input.provider.trim();
-  const modelId = input.modelId.trim();
+  const modelId = input.modelId?.trim() ?? "";
   if (!providerId) throw new Error("Provider id is required");
-  if (!modelId) throw new Error("Model id is required");
   if (!CUSTOM_PROVIDER_ID_RE.test(providerId)) {
     throw new Error(
       "Provider id must start with a letter or digit and use only letters, digits, . _ -",
@@ -354,23 +354,27 @@ export function upsertCustomProviderInModelsJson(
 
   const existing = isRecord(providers[providerId]) ? { ...providers[providerId] } : {};
   const modelsArr = Array.isArray(existing.models) ? [...existing.models] : [];
-  const modelEntry = buildModelEntry({
-    id: modelId,
-    name: input.modelName,
-    reasoning: input.reasoning,
-    contextWindow: input.contextWindow,
-    maxTokens: input.maxTokens,
-  });
+  // modelId 可空：仅更新供应商本身（baseUrl / api / 密钥 / 代理），模型列表原样保留
+  let nextModels = modelsArr;
+  if (modelId) {
+    const modelEntry = buildModelEntry({
+      id: modelId,
+      name: input.modelName,
+      reasoning: input.reasoning,
+      contextWindow: input.contextWindow,
+      maxTokens: input.maxTokens,
+    });
 
-  let replaced = false;
-  const nextModels = modelsArr.map((item) => {
-    if (isRecord(item) && item.id === modelId) {
-      replaced = true;
-      return { ...item, ...modelEntry };
-    }
-    return item;
-  });
-  if (!replaced) nextModels.push(modelEntry);
+    let replaced = false;
+    nextModels = modelsArr.map((item) => {
+      if (isRecord(item) && item.id === modelId) {
+        replaced = true;
+        return { ...item, ...modelEntry };
+      }
+      return item;
+    });
+    if (!replaced) nextModels.push(modelEntry);
+  }
 
   const providerBlock: Record<string, unknown> = {
     ...existing,

@@ -45,6 +45,10 @@ export type ModelsJsonConfigView = {
   providers: ModelsJsonProviderView[];
 };
 
+/** 供应商 ID 约束：与 agent 侧 CUSTOM_PROVIDER_ID_RE 一致（id 会成为 models.json 键与 provider/model 复合值的一部分） */
+const PROVIDER_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+const PROVIDER_ID_RULE = "供应商 ID 需以字母或数字开头，仅可包含字母、数字与 . _ -，最长 64 字符";
+
 /** 内置厂商视图：对应 agent 侧 providers/builtin.ts 的投影（永不含密钥） */
 type BuiltinProviderView = {
   id: string;
@@ -390,24 +394,24 @@ export function ProvidersPanel(props: {
       props.onToast("请填写供应商 ID", "warning");
       return;
     }
+    if (!PROVIDER_ID_RE.test(provider)) {
+      props.onToast(PROVIDER_ID_RULE, "warning");
+      return;
+    }
     if (!draft.baseUrl.trim()) {
       props.onToast("请填写 Base URL", "warning");
       return;
     }
     const modelId = draft.modelId.trim();
-    if (!modelId) {
-      props.onToast("请填写初始模型 ID", "warning");
-      return;
-    }
     setBusy(true);
     try {
       const next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
         provider,
         baseUrl: draft.baseUrl.trim(),
         api: draft.api,
-        modelId,
-        modelName: draft.modelName.trim() || undefined,
-        contextWindow: readContextWindow(draft.contextWindow),
+        modelId: modelId || undefined,
+        modelName: modelId ? (draft.modelName.trim() || undefined) : undefined,
+        contextWindow: modelId ? readContextWindow(draft.contextWindow) : undefined,
         apiKey: draft.apiKey.trim() || undefined,
         proxy: draft.proxy,
       });
@@ -629,11 +633,16 @@ export function ProvidersPanel(props: {
     setBusy(true);
     try {
       let next: ModelsJsonConfigView;
-      const exists = config?.providers.some((p) => p.provider === fetchPicker.provider);
+      const providerId = fetchPicker.provider || draft.provider.trim();
+      const exists = config?.providers.some((p) => p.provider === providerId);
       if (!exists) {
+        if (!PROVIDER_ID_RE.test(providerId)) {
+          props.onToast(PROVIDER_ID_RULE, "warning");
+          return;
+        }
         const first = models[0]!;
         next = await rpc<ModelsJsonConfigView>("upsertCustomProvider", {
-          provider: fetchPicker.provider || draft.provider.trim(),
+          provider: providerId,
           baseUrl: draft.baseUrl.trim(),
           api: draft.api,
           modelId: first.id,
@@ -644,13 +653,13 @@ export function ProvidersPanel(props: {
         const rest = models.slice(1);
         if (rest.length) {
           next = await rpc<ModelsJsonConfigView>("addProviderModels", {
-            provider: fetchPicker.provider || draft.provider.trim(),
+            provider: providerId,
             models: rest,
           });
         }
       } else {
         next = await rpc<ModelsJsonConfigView>("addProviderModels", {
-          provider: fetchPicker.provider,
+          provider: providerId,
           models,
         });
       }
@@ -1100,8 +1109,11 @@ export function ProvidersPanel(props: {
           <form className="ui-dialog__form" onSubmit={(e) => void saveProvider(e)}>
             <Input
               label="供应商 ID"
-              hint="用于标识供应商，建议小写英文，如 openai、ollama。"
+              hint="用于标识供应商：字母或数字开头，仅可包含字母、数字与 . _ -，如 openai、my-gateway。"
               required
+              status={draft.provider.trim() && !PROVIDER_ID_RE.test(draft.provider.trim())
+                ? PROVIDER_ID_RULE
+                : undefined}
               value={draft.provider}
               onChange={(provider) => setDraft((d) => ({ ...d, provider }))}
               placeholder="openai / anthropic / ollama / my-gateway"
@@ -1134,11 +1146,10 @@ export function ProvidersPanel(props: {
             />
             <Input
               label="初始模型 ID"
-              hint="创建供应商时至少需要一个模型，之后可单独添加或编辑。"
-              required
+              hint="可留空：先只保存供应商，之后在详情页「添加模型」或从接口拉取。"
               value={draft.modelId}
               onChange={(modelId) => setDraft((d) => ({ ...d, modelId }))}
-              placeholder="gpt-4.1"
+              placeholder="可留空，如 gpt-4.1"
             />
             <Input
               label="API 密钥"
