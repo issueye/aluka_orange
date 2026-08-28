@@ -152,7 +152,9 @@ export function isoToMillis(timestamp: string): number {
 
 export function parseSessionEntries(content: string): FileEntry[] {
   const entries: FileEntry[] = [];
-  for (const line of content.split(/\r?\n/)) {
+  // 用字符串切分而非 /\r?\n/：aluka 运行时的正则 split 在大会话（MB 级）上是
+  // 平方级耗时（1.8MB 实测 19s，字符串 split 1ms）；行尾 \r 由 JSON.parse 容忍。
+  for (const line of content.split("\n")) {
     if (!line.trim()) continue;
     try {
       entries.push(JSON.parse(line) as FileEntry);
