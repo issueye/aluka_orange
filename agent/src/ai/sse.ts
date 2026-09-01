@@ -6,6 +6,7 @@
  */
 
 import type { AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream } from "./types.ts";
+import { ProviderStallError } from "./provider-fetch.ts";
 
 /**
  * 流式响应的内部实现
@@ -78,10 +79,13 @@ export type SseFrame = { event?: string; data: string };
  * Responses API 同时发送 `event:` 与 `data:`；Chat Completions 通常只有 `data:`。
  * signal 用于「停止对话」：中止时立即 cancel reader，让读取循环提前自然结束
  * （不再卡在等待下一个 chunk；provider 收到自然结束后收尾退出）。
+ * stallTimeoutMs 为单次 read 的空闲超时：超过该时长没有任何字节到达（网关挂起/断流）
+ * 则 cancel reader 并抛 ProviderStallError，避免会话无限停留在「处理中」。
  */
 export async function* readSseEvents(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
+  stallTimeoutMs?: number,
 ): AsyncGenerator<SseFrame> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -97,6 +101,17 @@ export async function* readSseEvents(
   };
   if (signal?.aborted) abortListener();
   else signal?.addEventListener("abort", abortListener, { once: true });
+
+  // 单次 read 的空闲超时：超时 cancel reader 并抛 ProviderStallError
+  const readWithStall = (): Promise<{ done: boolean; value?: Uint8Array } | undefined> => {
+    const read = reader.read() as Promise<{ done: boolean; value?: Uint8Array } | undefined>;
+    if (!stallTimeoutMs || stallTimeoutMs <= 0) return read;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stall = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new ProviderStallError("stream", stallTimeoutMs)), stallTimeoutMs);
+    });
+    return Promise.race([read, stall]).finally(() => clearTimeout(timer));
+  };
 
   const consumeLine = function* (raw: string): Generator<SseFrame> {
     const line = raw.trimEnd();
@@ -118,9 +133,14 @@ export async function* readSseEvents(
       if (signal?.aborted) return;
       let readResult: { done: boolean; value?: Uint8Array } | undefined;
       try {
-        readResult = (await reader.read()) as { done: boolean; value?: Uint8Array };
+        readResult = await readWithStall();
       } catch (reason) {
         if (signal?.aborted) return; // 中止引发的读取错误：自然结束
+        try {
+          void reader.cancel();
+        } catch {
+          /* ignore */
+        }
         throw reason;
       }
       if (!readResult) return; // 部分运行时会话对已结束流 read() 返回 undefined：视同 done
@@ -152,8 +172,9 @@ export async function* readSseEvents(
 export async function* readSse(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
+  stallTimeoutMs?: number,
 ): AsyncGenerator<string> {
-  for await (const frame of readSseEvents(body, signal)) {
+  for await (const frame of readSseEvents(body, signal, stallTimeoutMs)) {
     yield frame.data;
   }
 }

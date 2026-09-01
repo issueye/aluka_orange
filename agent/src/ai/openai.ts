@@ -21,7 +21,7 @@ import type {
 import { typeboxToJsonSchema } from "./schema.ts";
 import { logProviderCall } from "./request-log.ts";
 import { StreamImpl, readSse, trimSlash } from "./sse.ts";
-import { providerFetch } from "./provider-fetch.ts";
+import { providerFetch, providerStallTimeoutMs } from "./provider-fetch.ts";
 
 /** OpenAI 工具调用增量数据结构 */
 interface OpenAIToolCallDelta {
@@ -133,7 +133,7 @@ async function run(
     headers,
     body: requestBody,
     signal: options.signal,
-  }, model.proxy);
+  }, model.proxy, providerStallTimeoutMs());
 
   // 收集响应头
   const responseHeaders: Record<string, string> = {};
@@ -174,8 +174,9 @@ async function run(
   let usage = { input: 0, output: 0, totalTokens: 0 };
   let stopReason: AssistantMessage["stopReason"] = "stop";
 
-  // 解析 SSE 数据流（signal 中止时读取立即结束，停止对话无需等下一个 chunk）
-  for await (const line of readSse(response.body, options.signal)) {
+  // 解析 SSE 数据流（signal 中止时读取立即结束，停止对话无需等下一个 chunk；
+  // 空闲超时防止网关断流后会话无限「处理中」）
+  for await (const line of readSse(response.body, options.signal, providerStallTimeoutMs())) {
     if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (line === "[DONE]") break;
     let chunk: OpenAIChunk;

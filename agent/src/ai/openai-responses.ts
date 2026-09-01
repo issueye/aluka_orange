@@ -23,7 +23,7 @@ import type {
 import { typeboxToJsonSchema } from "./schema.ts";
 import { logProviderCall } from "./request-log.ts";
 import { StreamImpl, readSseEvents, trimSlash } from "./sse.ts";
-import { providerFetch } from "./provider-fetch.ts";
+import { providerFetch, providerStallTimeoutMs, raceStall } from "./provider-fetch.ts";
 
 interface ResponsesUsage {
   input_tokens?: number;
@@ -218,7 +218,7 @@ async function run(
     headers,
     body: requestBody,
     signal: options.signal,
-  }, model.proxy);
+  }, model.proxy, providerStallTimeoutMs());
 
   const responseHeaders: Record<string, string> = {};
   response.headers.forEach((value, key) => {
@@ -259,7 +259,12 @@ async function run(
 
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json") && !contentType.includes("text/event-stream")) {
-    const json = (await response.json()) as ResponsesEvent["response"] & ResponsesEvent;
+    const json = (await raceStall(
+      response.json() as Promise<ResponsesEvent["response"] & ResponsesEvent>,
+      providerStallTimeoutMs(),
+      "body",
+      () => void response.body?.cancel().catch(() => {}),
+    )) as ResponsesEvent["response"] & ResponsesEvent;
     const envelope = json?.response ?? json;
     if (envelope?.status === "failed" || envelope?.error) {
       throw new Error(errorMessage(envelope.error) || "OpenAI Responses request failed");
@@ -268,7 +273,7 @@ async function run(
     completedOutput = envelope?.output;
     applyCompletedOutput(completedOutput, content, toolBuffers, stream);
   } else {
-    for await (const frame of readSseEvents(response.body, options.signal)) {
+    for await (const frame of readSseEvents(response.body, options.signal, providerStallTimeoutMs())) {
       if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       if (frame.data === "[DONE]") break;
       let event: ResponsesEvent;

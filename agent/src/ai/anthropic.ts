@@ -19,7 +19,7 @@ import type {
 import { typeboxToJsonSchema } from "./schema.ts";
 import { logProviderCall } from "./request-log.ts";
 import { streamOpenAI } from "./openai.ts";
-import { providerFetch } from "./provider-fetch.ts";
+import { providerFetch, providerStallTimeoutMs, raceStall } from "./provider-fetch.ts";
 
 /**
  * Anthropic 流式调用入口
@@ -92,7 +92,7 @@ function streamAnthropicNative(
         },
         body: requestBody,
         signal: options.signal,
-      }, model.proxy);
+      }, model.proxy, providerStallTimeoutMs());
 
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
@@ -122,8 +122,17 @@ function streamAnthropicNative(
         status: response.status,
       });
 
-      // 解析 JSON 响应
-      const json = (await response.json()) as {
+      // 解析 JSON 响应（空闲超时：响应体迟迟不完成时掐断，避免会话无限等待）
+      const json = (await raceStall(
+        response.json() as Promise<{
+          content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
+          stop_reason?: string;
+          usage?: { input_tokens?: number; output_tokens?: number };
+        }>,
+        providerStallTimeoutMs(),
+        "body",
+        () => void response.body?.cancel().catch(() => {}),
+      )) as {
         content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
         stop_reason?: string;
         usage?: { input_tokens?: number; output_tokens?: number };

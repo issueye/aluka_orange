@@ -30,6 +30,8 @@ cp .env.example .env
 
 Set `OPENAI_API_KEY` (or `ALUKA_API_KEY`) and optionally `OPENAI_BASE_URL` / `OPENAI_MODEL`. Any OpenAI-compatible endpoint works (DeepSeek, Qwen, Ollama, vLLM).
 
+Provider requests have an idle timeout (default 120s): if no response headers arrive, or the SSE stream goes silent, the run fails with a retryable "timed out" error instead of hanging forever. Tune or disable with `ALUKA_STALL_TIMEOUT_MS` (milliseconds; `0` disables).
+
 ```bash
 npm test
 npx tsx src/cli.ts --help
