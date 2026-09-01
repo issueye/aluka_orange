@@ -1637,7 +1637,7 @@ select {
 
 .code-block__body {
   overflow: auto;
-  padding: 6px 0;
+  padding: 6px;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
